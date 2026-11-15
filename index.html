@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Rubik's Cube</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="style.css" />
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.187.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.187.0/examples/jsm/"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <canvas id="view"></canvas>
+
+    <div id="hud">
+      <div class="stats"><span id="timer">0:00.00</span><span id="moves">Moves: 0</span></div>
+      <div id="message"></div>
+      <div id="prefix"></div>
+      <div id="history"></div>
+    </div>
+
+    <nav id="toolbar">
+      <button data-cmd="scramble">Scramble</button>
+      <button data-cmd="solve">Solve</button>
+      <button data-cmd="undo">Undo</button>
+      <button data-cmd="reset">Reset</button>
+      <button id="toggle-panel">Settings</button>
+    </nav>
+
+    <aside id="panel">
+      <section>
+        <label class="field">
+          <span>Cube size <output id="size-out"></output></span>
+          <input type="range" id="size" step="1" />
+        </label>
+        <label class="field">
+          <span>Turn speed <output id="speed-out"></output></span>
+          <input type="range" id="speed" min="0" max="600" step="10" />
+        </label>
+        <label class="field">
+          <span>Scramble moves</span>
+          <input type="number" id="scramble-length" min="0" max="1000" />
+          <small id="len-hint"></small>
+        </label>
+      </section>
+
+      <section>
+        <h3>Colours</h3>
+        <div id="colors" class="grid"></div>
+      </section>
+
+      <section>
+        <h3>Apply moves</h3>
+        <form id="alg-form">
+          <input id="alg" placeholder="R U R' U' · 2Rw · M2 · x" autocomplete="off" spellcheck="false" />
+          <button>Apply</button>
+        </form>
+      </section>
+
+      <section>
+        <h3>Key bindings</h3>
+        <p class="hint">
+          Click a key, then press the new one (Esc unbinds). Hold Shift for counter-clockwise. Type a number first
+          for inner layers: <kbd>3</kbd> <kbd>R</kbd> turns the 3rd layer from the right, <kbd>3</kbd> <kbd>Rw</kbd>
+          turns 3 layers.
+        </p>
+        <div id="keys" class="grid"></div>
+      </section>
+
+      <section>
+        <h3>Mouse / touch</h3>
+        <p class="hint">
+          Drag a sticker to turn its layer. Drag the background to orbit, scroll or pinch to zoom.
+        </p>
+      </section>
+
+      <button id="defaults" type="button">Restore defaults</button>
+    </aside>
+
+    <script type="module" src="js/main.js"></script>
+  </body>
+</html>
