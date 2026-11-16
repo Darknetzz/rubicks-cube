@@ -168,20 +168,20 @@ export class Cube {
 
   #faceletOf(sticker) {
     const n = sticker.userData.normal.clone().applyQuaternion(sticker.parent.quaternion);
-    return faceletIndex(sticker.parent.position.toArray(), n.toArray());
+    return faceletIndex(sticker.parent.position.toArray(), n.toArray(), this.n);
   }
 
-  /** 3×3 only, when idle: 54-char Kociemba-order string of colour letters (see facelets.js). */
+  /** When idle: 6·N² colour letters in facelet order (see facelets.js); null while turning. */
   getFacelets() {
-    if (this.n !== 3 || this.busy) return null;
-    const out = new Array(54);
+    if (this.busy) return null;
+    const out = new Array(6 * this.n * this.n);
     for (const s of this.stickers) out[this.#faceletOf(s)] = s.userData.face;
     return out.join('');
   }
 
-  /** Rebuild as a 3×3 in standard orientation and colour every sticker from a facelet string. */
-  setFacelets(str) {
-    this.build(3);
+  /** Rebuild as an N×N in standard orientation and colour every sticker from a facelet string. */
+  setFacelets(str, n = 3) {
+    this.build(n);
     for (const s of this.stickers) this.paint(s, str[this.#faceletOf(s)]);
   }
 

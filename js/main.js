@@ -10,6 +10,7 @@ import {
 } from './settings.js';
 import { serverAvailable, connect, postState } from './live.js';
 import { validate, colourCounts } from './validate.js';
+import { parseState, encodeState, stateToJson, stateLink } from './statefile.js';
 
 const $ = (id) => document.getElementById(id);
 const settings = loadSettings();
@@ -169,7 +170,10 @@ function scramble() {
 }
 
 function solve() {
-  if (!state.history.length) return;
+  if (!state.history.length) {
+    if (!cube.busy && !cube.isSolved()) setMessage("Solve can only undo scrambles and moves made here, not an imported cube.", 'error');
+    return;
+  }
   const seq = state.history.reverse().map(inverse);
   state.history = [];
   const wasRunning = state.running;
@@ -529,7 +533,90 @@ renderer.setAnimationLoop((now) => {
   renderer.render(scene, camera);
 });
 
+// ---------- export / import ----------
+function currentState() {
+  const facelets = cube.getFacelets();
+  if (!facelets) setMessage('Wait for the cube to stop turning.', 'error');
+  return facelets;
+}
+
+async function copy(text, what) {
+  $('state-text').value = text;
+  try {
+    await navigator.clipboard.writeText(text);
+    setMessage(`${what} copied to the clipboard.`, 'win');
+  } catch {
+    $('state-text').select(); // no clipboard (e.g. plain http): leave it selected in the box
+    setMessage(`${what} is in the Save / load box; copy it from there.`);
+  }
+}
+
+function importState(text) {
+  let parsed;
+  try {
+    parsed = parseState(text);
+  } catch (err) {
+    setMessage(`Can't load that cube: ${err.message}`, 'error');
+    return false;
+  }
+  const { size, facelets } = parsed;
+  if (live.on) {
+    if (size !== 3) {
+      setMessage('Real-cube mode is 3×3 only.', 'error');
+      return false;
+    }
+    cube.setFacelets(facelets, 3);
+    setPainting(true);
+    setMessage('Loaded. Check it against your cube, then press Send to Claude.');
+    return true;
+  }
+  const resized = cube.n !== size;
+  settings.size = size;
+  save();
+  cube.setFacelets(facelets, size);
+  Object.assign(state, { history: [], moves: 0, running: false, t0: 0, t1: 0, scrambled: !cube.isSolved() });
+  if (resized) fitCamera();
+  syncInputs();
+  updateHud();
+  setMessage(`Loaded a ${size}×${size} cube.${state.scrambled ? ' The timer starts on your first move.' : ''}`, 'win');
+  return true;
+}
+
+$('copy-text').addEventListener('click', () => {
+  const f = currentState();
+  if (f) copy(encodeState(cube.n, f), 'Cube text');
+});
+$('copy-link').addEventListener('click', () => {
+  const f = currentState();
+  if (f) copy(stateLink(cube.n, f), 'Link');
+});
+$('download').addEventListener('click', () => {
+  const f = currentState();
+  if (!f) return;
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([stateToJson(cube.n, f)], { type: 'application/json' }));
+  a.download = `cube-${cube.n}x${cube.n}.json`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+});
+$('upload').addEventListener('click', () => $('upload-file').click());
+$('upload-file').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (file) importState(await file.text());
+});
+$('state-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  if (importState($('state-text').value)) $('state-text').blur();
+});
+
 applyColors();
 fitCamera();
 syncInputs();
 updateHud();
+
+// A shared link (#state=…) loads that cube once, then the hash is dropped so a reload doesn't undo progress.
+if (location.hash.startsWith('#state=')) {
+  importState(location.hash);
+  history.replaceState(null, '', location.pathname + location.search);
+}

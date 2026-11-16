@@ -123,8 +123,10 @@ input[type='range'] { width: 100%; accent-color: var(--accent); }
 .key { min-width: 76px; padding: 2px 8px; font-family: ui-monospace, Consolas, monospace; }
 .key.capturing { border-color: var(--accent); color: var(--accent); }
 
-#alg-form { display: flex; gap: 6px; }
-#alg { flex: 1; min-width: 0; }
+#alg-form, #state-form { display: flex; gap: 6px; }
+#alg, #state-text { flex: 1; min-width: 0; }
+.buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 8px; }
+.hint code { font-size: 11px; }
 #defaults { width: 100%; }
 
 /* ---------- real-cube mode (only when served by server/) ---------- */

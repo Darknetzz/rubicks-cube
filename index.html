@@ -81,6 +81,22 @@
       </section>
 
       <section>
+        <h3>Save / load</h3>
+        <form id="state-form">
+          <input id="state-text" placeholder="Paste cube text, a link or JSON" autocomplete="off" spellcheck="false" />
+          <button>Load</button>
+        </form>
+        <div class="buttons">
+          <button id="copy-text" type="button">Copy text</button>
+          <button id="copy-link" type="button">Copy link</button>
+          <button id="download" type="button">Download</button>
+          <button id="upload" type="button">Upload</button>
+          <input id="upload-file" type="file" accept=".json,.txt,application/json,text/plain" hidden />
+        </div>
+        <p class="hint">A 3×3 is saved as the same 54 letters Claude's <code>set_cube</code> takes; other sizes start with the size, e.g. <code>4:UUU…</code>.</p>
+      </section>
+
+      <section>
         <h3>Key bindings</h3>
         <p class="hint">
           Click a key, then press the new one (Esc unbinds). Hold Shift for counter-clockwise. Type a number first
