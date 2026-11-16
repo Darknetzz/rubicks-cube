@@ -5,7 +5,7 @@ import {
   parseMove, parseSequence, formatTurn, inverse, pushMerged, randomScramble, autoScrambleLength,
 } from './notation.js';
 import {
-  ACTIONS, FACE_KEYS, FACE_NAMES, MIN_SIZE, MAX_SIZE,
+  ACTIONS, FACE_KEYS, FACE_NAMES, MIN_SIZE, MAX_SIZE, SCHEMES, presetOf, faceColors, isScheme,
   loadSettings, saveSettings, defaultSettings, normalizeKey, keyLabel,
 } from './settings.js';
 import { serverAvailable, connect, postState } from './live.js';
@@ -30,7 +30,7 @@ const keyLight = new THREE.DirectionalLight(0xffffff, 1.4);
 keyLight.position.set(2, 4, 3);
 camera.add(keyLight); // light follows the view so every face stays readable
 
-const cube = new Cube(scene, settings);
+const cube = new Cube(scene, { ...settings, colors: faceColors(settings) });
 const arrow = new MoveArrow(scene);
 cube.speed = settings.speed;
 cube.onTurnDone = () => {
@@ -41,20 +41,21 @@ cube.onTurnDone = () => {
 const state = { history: [], moves: 0, scrambled: false, running: false, t0: 0, t1: 0, prefix: '' };
 // Real-cube mode: the page mirrors the server's cube (shared with Claude over MCP).
 const live = {
-  on: false, disconnect: null, snap: null, painting: false, paintFace: 'U',
+  on: false, disconnect: null, snap: null, painting: false, paintColour: 'W',
   paintBase: null, // server state the current painting corresponds to; edits = page differs from it
   conflict: false, // a remote update arrived over unsent edits; waiting for the user to choose
 };
 
-// The server speaks colour letters (W Y R O G B); the 3D cube paints with settings colour keys. This table only picks
-// which colour swatch draws which colour. Faces are never inferred from it: the centres define the scheme.
-const KEY_OF_COLOUR = { W: 'U', Y: 'D', G: 'F', B: 'B', R: 'R', O: 'L' };
-const COLOUR_OF_KEY = Object.fromEntries(Object.entries(KEY_OF_COLOUR).map(([c, k]) => [k, c]));
+// The server speaks colour letters (W Y R O G B); the 3D cube draws face keys U R F D L B, and the page's colour
+// scheme (settings.scheme, face → colour) says which colour each key is. In real-cube mode this only picks how each
+// colour is drawn: faces are never inferred from it, the server's centres define the real cube's scheme.
+const keyOf = (colour) => Object.keys(settings.scheme).find((k) => settings.scheme[k] === colour);
+const colourOf = (key) => settings.scheme[key];
 const liveFacelets = () => {
   const keys = cube.n === 3 ? cube.getFacelets() : null;
-  return keys && [...keys].map((k) => COLOUR_OF_KEY[k]).join('');
+  return keys && [...keys].map(colourOf).join('');
 };
-const showLive = (colours) => cube.setFacelets([...colours].map((c) => KEY_OF_COLOUR[c]).join(''));
+const showLive = (colours) => cube.setFacelets([...colours].map(keyOf).join(''));
 
 // ---------- mouse / touch turning (registered before OrbitControls so it can veto orbiting) ----------
 const raycaster = new THREE.Raycaster();
@@ -69,7 +70,7 @@ function paintAt(e) {
   raycaster.setFromCamera(ndc(e), camera);
   const s = cube.stickerAt(raycaster);
   if (s) {
-    cube.paint(s, live.paintFace);
+    cube.paint(s, keyOf(live.paintColour));
     savePaint();
     renderPaintCheck();
   }
@@ -252,7 +253,7 @@ function writePaint(record) {
 
 function savePaint() {
   const facelets = live.painting && liveFacelets();
-  if (facelets) writePaint({ facelets, paintBase: live.paintBase, paintFace: live.paintFace });
+  if (facelets) writePaint({ facelets, paintBase: live.paintBase, paintColour: live.paintColour });
 }
 
 function clearPaint() {
@@ -388,7 +389,7 @@ function setPainting(on, { fresh = false } = {}) {
     } else if (rec) {
       showLive(rec.facelets); // drops any queued turns: the saved painting already includes them
       live.paintBase = rec.paintBase ?? server ?? null;
-      if (rec.paintFace) live.paintFace = rec.paintFace;
+      if (COLOURS.includes(rec.paintColour)) live.paintColour = rec.paintColour;
       renderPalette();
       if (server && live.paintBase !== server) showConflict(true); // the server changed while Paint was closed
     } else {
@@ -414,7 +415,7 @@ function renderPaintCheck() {
     chip.className = counts[c] === 9 ? 'chip' : 'chip bad';
     chip.title = `${COLOUR_NAMES[c]}: ${counts[c]} of 9`;
     const dot = document.createElement('i');
-    dot.style.background = settings.colors[KEY_OF_COLOUR[c]];
+    dot.style.background = settings.palette[c];
     chip.append(dot, String(counts[c]));
     return chip;
   });
@@ -430,14 +431,13 @@ function renderPalette() {
   const box = $('palette');
   box.replaceChildren();
   for (const c of COLOURS) {
-    const f = KEY_OF_COLOUR[c];
     const b = document.createElement('button');
     b.type = 'button';
     b.title = COLOUR_NAMES[c];
-    b.style.background = settings.colors[f];
-    b.classList.toggle('selected', live.paintFace === f);
+    b.style.background = settings.palette[c];
+    b.classList.toggle('selected', live.paintColour === c);
     b.addEventListener('click', () => {
-      live.paintFace = f;
+      live.paintColour = c;
       renderPalette();
       savePaint();
     });
@@ -569,11 +569,68 @@ lenIn.addEventListener('change', () => {
 });
 
 function applyColors() {
-  cube.setColors(settings.colors, settings.body);
+  cube.setColors(faceColors(settings), settings.body);
   scene.background = new THREE.Color(settings.background);
   document.documentElement.style.setProperty('--bg', settings.background);
   renderPalette();
   renderPaintCheck();
+}
+
+/**
+ * Change which colour is on which face. The virtual cube keeps its pieces, so its colours change; in real-cube
+ * mode the stickers keep their colours (they are the real cube's) and only Paint → Clear starts from the new scheme.
+ */
+function setScheme(scheme) {
+  if (!isScheme(scheme)) return;
+  cube.flush();
+  const colours = live.on ? liveFacelets() : null;
+  settings.scheme = { ...scheme };
+  save();
+  if (colours) showLive(colours);
+  applyColors();
+  renderScheme();
+  if (live.on) setMessage('Scheme changed. Paint → Clear now starts from a solved cube in this scheme.');
+}
+
+function renderScheme() {
+  const box = $('scheme');
+  box.replaceChildren();
+  const preset = document.createElement('select');
+  preset.id = 'scheme-preset';
+  for (const [id, { label }] of Object.entries(SCHEMES)) preset.append(new Option(label, id));
+  preset.append(new Option('Custom', 'custom'));
+  preset.value = presetOf(settings.scheme);
+  preset.addEventListener('change', () => {
+    if (SCHEMES[preset.value]) setScheme(SCHEMES[preset.value].scheme);
+  });
+  const field = document.createElement('label');
+  field.className = 'field';
+  const title = document.createElement('span');
+  title.textContent = 'Preset';
+  field.append(title, preset);
+
+  const faces = document.createElement('div');
+  faces.className = 'grid scheme-faces';
+  for (const f of FACE_KEYS) {
+    const l = document.createElement('label');
+    l.className = 'swatch';
+    const dot = document.createElement('i');
+    dot.style.background = settings.palette[settings.scheme[f]];
+    const sel = document.createElement('select');
+    for (const c of COLOURS) sel.append(new Option(COLOUR_NAMES[c], c));
+    sel.value = settings.scheme[f];
+    sel.title = `Colour on the ${FACE_NAMES[f].toLowerCase()} face of the solved cube`;
+    sel.addEventListener('change', () => {
+      // keep it one colour per face: the face that had this colour takes this face's old one
+      const other = keyOf(sel.value);
+      setScheme({ ...settings.scheme, [f]: sel.value, [other]: settings.scheme[f] });
+    });
+    l.append(dot, FACE_NAMES[f], sel);
+    faces.append(l);
+  }
+  const note = document.createElement('small');
+  note.textContent = 'Which colour is on which face of the solved cube. In real-cube mode Claude reads your cube\'s scheme from its centres; this sets the colours Paint → Clear starts from.';
+  box.append(field, faces, note);
 }
 
 function renderColors() {
@@ -588,12 +645,16 @@ function renderColors() {
     i.addEventListener('input', () => {
       set(i.value);
       applyColors();
+      renderScheme();
       save();
     });
     l.append(i, label);
     box.append(l);
   };
-  for (const f of FACE_KEYS) add(`${FACE_NAMES[f]} (${COLOUR_NAMES[COLOUR_OF_KEY[f]]})`, settings.colors[f], (v) => (settings.colors[f] = v));
+  for (const c of COLOURS) {
+    const name = COLOUR_NAMES[c];
+    add(name[0].toUpperCase() + name.slice(1), settings.palette[c], (v) => (settings.palette[c] = v));
+  }
   add('Body', settings.body, (v) => (settings.body = v));
   add('Background', settings.background, (v) => (settings.background = v));
 }
@@ -626,6 +687,7 @@ function syncInputs() {
   $('speed-out').textContent = speedLabel(settings.speed);
   lenIn.value = settings.scrambleLength;
   $('len-hint').textContent = `0 = auto (${autoScrambleLength(settings.size)} for ${sizeLabel(settings.size)})`;
+  renderScheme();
   renderColors();
   renderKeys();
 }
@@ -700,7 +762,7 @@ async function copy(text, what) {
 function importState(text) {
   let parsed;
   try {
-    parsed = parseState(text);
+    parsed = parseState(text, settings.scheme);
   } catch (err) {
     setMessage(`Can't load that cube: ${err.message}`, 'error');
     return false;
@@ -732,17 +794,17 @@ function importState(text) {
 
 $('copy-text').addEventListener('click', () => {
   const f = currentState();
-  if (f) copy(encodeState(cube.n, f), 'Cube text');
+  if (f) copy(encodeState(cube.n, f, settings.scheme), 'Cube text');
 });
 $('copy-link').addEventListener('click', () => {
   const f = currentState();
-  if (f) copy(stateLink(cube.n, f), 'Link');
+  if (f) copy(stateLink(cube.n, f, location.href, settings.scheme), 'Link');
 });
 $('download').addEventListener('click', () => {
   const f = currentState();
   if (!f) return;
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([stateToJson(cube.n, f)], { type: 'application/json' }));
+  a.href = URL.createObjectURL(new Blob([stateToJson(cube.n, f, settings.scheme)], { type: 'application/json' }));
   a.download = `cube-${cube.n}x${cube.n}.json`;
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
@@ -789,7 +851,7 @@ const validTurn = (t, n) =>
 function restoreCube(saved) {
   let parsed;
   try {
-    parsed = parseState(`${saved.size}:${saved.facelets}`);
+    parsed = parseState(`${saved.size}:${saved.facelets}`, settings.scheme);
   } catch {
     return; // corrupt or from an incompatible version: start fresh
   }

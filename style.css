@@ -40,7 +40,7 @@ button {
 }
 button:hover { background: rgba(255, 255, 255, 0.15); }
 
-input[type='number'], input:not([type]) {
+input[type='number'], input:not([type]), select {
   font: inherit;
   color: var(--fg);
   background: rgba(0, 0, 0, 0.3);
@@ -118,6 +118,14 @@ input[type='range'] { width: 100%; accent-color: var(--accent); }
 .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; }
 .swatch { display: flex; align-items: center; gap: 8px; cursor: pointer; }
 .swatch input { width: 32px; height: 24px; padding: 0; border: 1px solid var(--line); border-radius: 4px; background: none; }
+
+#scheme-preset { width: 100%; min-width: 0; }
+.scheme-faces { margin-bottom: 8px; }
+.scheme-faces .swatch { cursor: default; }
+.scheme-faces i { width: 14px; height: 14px; border-radius: 3px; border: 1px solid var(--line); flex: none; }
+.scheme-faces select { margin-left: auto; padding: 2px 4px; }
+select option { color: #000; }
+#scheme small { color: var(--muted); font-size: 12px; }
 
 .keyrow { display: flex; justify-content: space-between; align-items: center; }
 .key { min-width: 76px; padding: 2px 8px; font-family: ui-monospace, Consolas, monospace; }

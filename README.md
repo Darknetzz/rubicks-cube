@@ -52,7 +52,8 @@ npm start              # npx serve .
 
 ## Features
 
-- Cube size, turn speed, scramble length, sticker/body/background colours and key bindings, all saved in localStorage
+- Cube size, turn speed, scramble length, colour scheme, sticker/body/background colours and key bindings, all saved in localStorage
+- Colour scheme presets: Western / American (white top or yellow top) and Japanese (white opposite blue), or a custom one set face by face. Save/load follows the scheme. In real-cube mode, Paint → Clear starts from a solved cube in this scheme. Claude still reads your real cube's scheme from its centres
 - Drag a sticker to turn its layer; drag the background to orbit
 - Keyboard notation: `R L U D F B M E S x y z`, Shift for counter-clockwise, a number prefix for inner layers (`3` then `R` → `3R`)
 - Text input for algorithms (`R U R' U'`, `2Rw`, `r`, `M2`, …)

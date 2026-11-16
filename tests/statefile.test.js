@@ -44,3 +44,35 @@ test('rejects bad input with readable errors', () => {
   assert.throws(() => parseState(SOLVED.slice(0, 7) + 'F' + SOLVED.slice(8, 19) + 'U' + SOLVED.slice(20)), /flipped/);
   assert.throws(() => parseState('{nope'), /not valid JSON/);
 });
+
+test('the page colour scheme decides which key a colour letter becomes', async () => {
+  const { SCHEMES, presetOf, faceColors, isScheme } = await import('../js/settings.js');
+  const jp = SCHEMES.japanese.scheme;
+  const jpSolvedColours = [...'URFDLB'].map((f) => jp[f].repeat(9)).join('');
+  // a solved Japanese cube, pasted into a page set to Japanese, is the solved page cube (keys U R F D L B)
+  assert.deepEqual(parseState(jpSolvedColours, jp), { size: 3, facelets: SOLVED });
+  assert.equal(encodeState(3, SOLVED, jp), jpSolvedColours);
+  assert.equal(encodeState(2, solvedState(2), SCHEMES['western-yellow'].scheme), `2:${'Y'.repeat(4)}${'O'.repeat(4)}${'G'.repeat(4)}${'W'.repeat(4)}${'R'.repeat(4)}${'B'.repeat(4)}`);
+  assert.equal(presetOf(jp), 'japanese');
+  assert.equal(presetOf({ ...jp, U: 'B', D: 'W' }), 'custom');
+  assert.equal(faceColors({ scheme: jp, palette: { W: 'w', Y: 'y', R: 'r', O: 'o', G: 'g', B: 'b' } }).D, 'b');
+  assert.ok(isScheme(jp));
+  assert.ok(!isScheme({ ...jp, U: 'Y' }));
+  // every preset is a real cube: its solved state validates
+  const { validate, fromFaces } = await import('../js/validate.js');
+  for (const { scheme } of Object.values(SCHEMES)) assert.deepEqual(validate(fromFaces(SOLVED, scheme)), []);
+});
+
+test('old settings (a hex colour per face) migrate to the per-colour palette and the Western scheme', async () => {
+  const store = new Map();
+  globalThis.localStorage = { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) };
+  const { loadSettings, SCHEMES } = await import('../js/settings.js');
+  store.set('rubiks-cube-settings-v1', JSON.stringify({ colors: { U: '#eeeeee', D: '#ffff00', F: '#00ff00', B: '#0000ff', R: '#ff0000', L: '#ff8800' } }));
+  const s = loadSettings();
+  assert.deepEqual(s.scheme, SCHEMES.western.scheme);
+  assert.deepEqual(s.palette, { W: '#eeeeee', Y: '#ffff00', G: '#00ff00', B: '#0000ff', R: '#ff0000', O: '#ff8800' });
+  assert.equal(s.colors, undefined);
+  store.set('rubiks-cube-settings-v1', JSON.stringify({ scheme: { U: 'W', R: 'W', F: 'G', D: 'B', L: 'O', B: 'Y' } }));
+  assert.deepEqual(loadSettings().scheme, SCHEMES.western.scheme, 'a broken scheme falls back to the default');
+  delete globalThis.localStorage;
+});

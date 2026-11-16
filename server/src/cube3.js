@@ -62,10 +62,18 @@ export function solveDetailed(state, { budgetMs = SOLVE_BUDGET_MS, shortMs = SHO
   const short = shortSolve(faces, t0 + Math.min(shortMs, budgetMs));
   if (short.moves) return done(short.moves, true);
 
-  // The first two-phase answer has no deadline: it always comes back fast and something must be returned.
   const cube = Cube.fromString(faces);
-  let best = toList(cube.solve());
   const deadline = Date.now() + Math.max(0, budgetMs - (performance.now() - t0));
+  // The first two-phase answer normally takes a few ms; only if even that misses the deadline (e.g. a busy
+  // machine) is it rerun without one, because something must be returned.
+  let first;
+  try {
+    first = cube.solve(22, deadline);
+  } catch (err) {
+    if (!(err instanceof Cube.SolveTimeout)) throw err;
+    first = cube.solve(22);
+  }
+  let best = toList(first);
   while (best.length - 1 > short.provenDepth && Date.now() < deadline) {
     let next;
     try {
