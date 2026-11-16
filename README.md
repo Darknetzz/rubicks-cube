@@ -58,6 +58,7 @@ npm start              # npx serve .
 - Text input for algorithms (`R U R' U'`, `2Rw`, `r`, `M2`, …)
 - Timer and move counter that start after a scramble and stop when the cube is solved
 - Undo, and an auto-Solve that plays back the inverse of the scramble plus your moves
+- The cube, its move history, move count and timer survive a page reload (saved in localStorage), and so does real-cube mode
 - Save / load the sticker state (any size) as text, a `#state=…` link or a JSON file. A 3×3 is the same 54 letters (`URFDLB` faces, Kociemba order) that the MCP `set_cube` tool takes; other sizes are written `N:letters`. Solve can't undo an imported cube, because its move history isn't known
 
 ## Real-cube mode + MCP server

@@ -29,7 +29,10 @@ camera.add(keyLight); // light follows the view so every face stays readable
 
 const cube = new Cube(scene, settings);
 cube.speed = settings.speed;
-cube.onTurnDone = onTurnDone;
+cube.onTurnDone = () => {
+  onTurnDone();
+  if (!cube.busy) saveCube();
+};
 
 const state = { history: [], moves: 0, scrambled: false, running: false, t0: 0, t1: 0, prefix: '' };
 // Real-cube mode: the page mirrors the server's cube (shared with Claude over MCP).
@@ -198,6 +201,7 @@ function reset() {
   if (resized) fitCamera();
   setMessage('');
   updateHud();
+  saveCube();
 }
 
 const commands = Object.fromEntries(
@@ -258,6 +262,7 @@ function setLive(on) {
   }
   renderPlan();
   updateHud();
+  saveCube();
 }
 
 function setPainting(on) {
@@ -327,7 +332,7 @@ $('send').addEventListener('click', async () => {
     setMessage(err.message, 'error');
   }
 });
-serverAvailable().then((ok) => document.body.classList.toggle('has-server', ok));
+
 
 // ---------- HUD ----------
 function fmtTime(ms) {
@@ -578,6 +583,7 @@ function importState(text) {
   if (resized) fitCamera();
   syncInputs();
   updateHud();
+  saveCube();
   setMessage(`Loaded a ${size}×${size} cube.${state.scrambled ? ' The timer starts on your first move.' : ''}`, 'win');
   return true;
 }
@@ -610,10 +616,76 @@ $('state-form').addEventListener('submit', (e) => {
   if (importState($('state-text').value)) $('state-text').blur();
 });
 
+// ---------- keep the cube across reloads (per browser; real-cube mode lives on the server) ----------
+const CUBE_KEY = 'rubiks-cube-state-v1';
+
+function saveCube() {
+  try {
+    if (live.on) return localStorage.setItem(CUBE_KEY, JSON.stringify({ live: true }));
+    const facelets = cube.getFacelets();
+    if (!facelets) return; // mid-turn: saved again when the queue drains
+    const elapsed = state.running ? performance.now() - state.t0 : state.t1 - state.t0;
+    const { history, moves, scrambled, running } = state;
+    localStorage.setItem(CUBE_KEY, JSON.stringify({ size: cube.n, facelets, history, moves, scrambled, running, elapsed, savedAt: Date.now() }));
+  } catch {
+    /* storage unavailable: nothing persists */
+  }
+}
+
+function loadSavedCube() {
+  try {
+    return JSON.parse(localStorage.getItem(CUBE_KEY));
+  } catch {
+    return null;
+  }
+}
+
+const validTurn = (t, n) =>
+  t && [0, 1, 2].includes(t.axis) && [1, -1, 2].includes(t.turns) && Array.isArray(t.layers) &&
+  t.layers.length > 0 && t.layers.every((l) => Number.isInteger(l) && l >= 0 && l < n);
+
+function restoreCube(saved) {
+  let parsed;
+  try {
+    parsed = parseState(`${saved.size}:${saved.facelets}`);
+  } catch {
+    return; // corrupt or from an incompatible version: start fresh
+  }
+  const { size, facelets } = parsed;
+  settings.size = size;
+  save();
+  cube.setFacelets(facelets, size);
+  const history = Array.isArray(saved.history) && saved.history.every((t) => validTurn(t, size)) ? saved.history : [];
+  const elapsed = Math.max(0, Number(saved.elapsed) || 0);
+  const now = performance.now();
+  Object.assign(state, {
+    history,
+    moves: Number(saved.moves) || 0,
+    scrambled: !!saved.scrambled,
+    running: !!saved.running,
+    // a running timer keeps counting the time the tab was closed
+    t0: saved.running ? now - elapsed - Math.max(0, Date.now() - (Number(saved.savedAt) || Date.now())) : 0,
+    t1: saved.running ? 0 : elapsed,
+  });
+}
+
+addEventListener('pagehide', () => {
+  cube.flush();
+  saveCube();
+});
+
+const saved = loadSavedCube();
+if (saved && !saved.live) restoreCube(saved);
+
 applyColors();
 fitCamera();
 syncInputs();
 updateHud();
+
+serverAvailable().then((ok) => {
+  document.body.classList.toggle('has-server', ok);
+  if (ok && saved?.live && !live.on) setLive(true);
+});
 
 // A shared link (#state=…) loads that cube once, then the hash is dropped so a reload doesn't undo progress.
 if (location.hash.startsWith('#state=')) {

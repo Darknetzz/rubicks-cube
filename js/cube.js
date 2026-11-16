@@ -117,6 +117,16 @@ export class Cube {
     }
   }
 
+  /** Finish the current turn and apply everything queued, instantly (e.g. before the page unloads). */
+  flush() {
+    if (this.anim) this.finishAnim();
+    while (this.queue.length) {
+      const turn = this.queue.shift();
+      this.applyInstant(turn);
+      this.onTurnDone?.(turn);
+    }
+  }
+
   finishAnim() {
     const { pivot, turn, angle } = this.anim;
     pivot.setRotationFromAxisAngle(AXES[turn.axis], angle);
