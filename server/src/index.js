@@ -113,6 +113,18 @@ async function route(req, res) {
     }
   }
 
+  // An unfinished painting, kept for Claude to see (get_cube) without replacing the cube's state.
+  if (pathname === '/api/draft') {
+    if (req.method !== 'POST') return send(res, 405, { error: 'method not allowed' });
+    const body = await readBody(req);
+    try {
+      session.setDraft(body?.state, body?.painted);
+      return send(res, 200, session.snapshot());
+    } catch (err) {
+      return send(res, 422, { error: err.message });
+    }
+  }
+
   if (pathname === '/api/state') {
     if (req.method === 'GET') return send(res, 200, session.snapshot());
     if (req.method === 'POST') {

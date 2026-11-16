@@ -200,6 +200,21 @@ export class Cube {
     sticker.userData.face = face;
   }
 
+  /**
+   * Which stickers the user painted by hand, as 54 '1'/'0' in facelet order (null while turning). The flag lives on
+   * the sticker, so it moves with turns; a rebuild (setFacelets, Clear) drops it.
+   */
+  paintedMask() {
+    if (this.busy) return null;
+    const out = new Array(6 * this.n * this.n);
+    for (const s of this.stickers) out[this.#faceletOf(s)] = s.userData.painted ? '1' : '0';
+    return out.join('');
+  }
+
+  setPaintedMask(mask) {
+    for (const s of this.stickers) s.userData.painted = mask?.[this.#faceletOf(s)] === '1';
+  }
+
   /** Sticker under the ray (a hit on the gap around it counts too), or null. */
   stickerAt(raycaster) {
     const hit = this.pick(raycaster);

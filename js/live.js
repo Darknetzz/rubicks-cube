@@ -30,6 +30,9 @@ export async function postState(state) {
   return body;
 }
 
+/** Send a painting that isn't a valid cube yet (with a '1'/'0' mask of the stickers painted by hand) for Claude to see. */
+export const postDraft = (state, painted) => post('api/draft', { state, painted });
+
 async function post(path, body) {
   const r = await fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
   const json = await r.json().catch(() => ({}));

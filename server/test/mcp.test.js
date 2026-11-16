@@ -39,3 +39,18 @@ test('every plan line in the MCP output carries its direction hint', async () =>
   assert.match(after, new RegExp(`→ 3\\. ${plan[2].replace("'", "\\'")}: .*Hint: `));
   await close();
 });
+
+test('get_cube shows an unfinished painting with painted stickers in capitals and its problems', async () => {
+  const { client, session, close } = await connect();
+  const bad = 'Y'.repeat(9) + session.state.slice(9);
+  session.setDraft(bad, '1'.repeat(9) + '0'.repeat(45));
+  const out = textOf(await client.callTool({ name: 'get_cube', arguments: {} }));
+  assert.match(out, /UNFINISHED PAINTING/);
+  assert.match(out, /18 yellow stickers instead of 9/);
+  assert.match(out, /painted 9 of 54/);
+  assert.ok(out.includes(`Draft facelets: ${'Y'.repeat(9)}${bad.slice(9).toLowerCase()}`));
+  assert.match(out, /Current cube state/);
+  await client.callTool({ name: 'set_cube', arguments: { facelets: session.state } });
+  assert.doesNotMatch(textOf(await client.callTool({ name: 'get_cube', arguments: {} })), /UNFINISHED/);
+  await close();
+});

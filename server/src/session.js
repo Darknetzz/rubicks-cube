@@ -13,6 +13,8 @@ const migrate = (state) => (typeof state === 'string' && /[UFDL]/.test(state) &&
  * the snapshot spells it out for clients.
  */
 const HISTORY = 200; // undo steps kept
+const DRAFT = /^[WYROGB]{54}$/;
+const MASK = /^[01]{54}$/;
 
 export class Session extends EventEmitter {
   constructor(file) {
@@ -23,6 +25,7 @@ export class Session extends EventEmitter {
     this.step = 0;
     this.planBase = null; // the state the plan starts from
     this.history = []; // undo stack: { moves, before: { state, plan, step, planBase } }
+    this.draft = null; // { state, painted, at }: an unfinished painting the user sent; not the cube's state
     try {
       const saved = JSON.parse(readFileSync(file, 'utf8'));
       saved.state = migrate(saved.state);
@@ -30,6 +33,7 @@ export class Session extends EventEmitter {
         Object.assign(this, { state: saved.state, plan: saved.plan ?? null, step: saved.step ?? 0 });
         this.planBase = saved.planBase ?? (this.plan ? applyMoves(this.state, invertMoves(this.plan.slice(0, this.step))) : null);
         if (Array.isArray(saved.history)) this.history = saved.history.slice(-HISTORY);
+        if (saved.draft && DRAFT.test(saved.draft.state)) this.draft = saved.draft;
       }
     } catch {
       /* no saved state yet */
@@ -44,6 +48,7 @@ export class Session extends EventEmitter {
       plan: this.plan,
       step: this.step,
       canUndo: this.history.length > 0,
+      hasDraft: !!this.draft,
       scheme: { centres: centreColours(state), opposites: schemeText(state) },
     };
   }
@@ -52,8 +57,8 @@ export class Session extends EventEmitter {
     if (this.file) {
       try {
         mkdirSync(dirname(this.file), { recursive: true });
-        const { state, plan, step, planBase, history } = this;
-        writeFileSync(`${this.file}.tmp`, JSON.stringify({ state, plan, step, planBase, history }));
+        const { state, plan, step, planBase, history, draft } = this;
+        writeFileSync(`${this.file}.tmp`, JSON.stringify({ state, plan, step, planBase, history, draft }));
         renameSync(`${this.file}.tmp`, this.file);
       } catch (err) {
         console.error('could not save state:', err.message);
@@ -68,9 +73,23 @@ export class Session extends EventEmitter {
     if (errors.length) throw new Error(errors.join(' '));
     const before = schemeText(this.state);
     const after = schemeText(state);
-    Object.assign(this, { state, plan: null, step: 0, planBase: null, history: [] }); // no undo across a new state
+    // no undo across a new state; a complete cube replaces any unfinished one
+    Object.assign(this, { state, plan: null, step: 0, planBase: null, history: [], draft: null });
     this.#commit({ type: 'state' });
     return before === after ? '' : `Colour scheme changed from (${before}) to (${after}).`;
+  }
+
+  /**
+   * Keep an unfinished painting (54 colour letters that don't make a valid cube yet) for Claude to look at, with an
+   * optional mask of the stickers the user painted by hand ('1') versus left over from before ('0'). The cube's
+   * real state and plan are untouched. A valid state is set as the state instead.
+   */
+  setDraft(state, painted = null) {
+    if (!DRAFT.test(state ?? '')) throw new Error('A draft must be 54 colour letters W Y R O G B.');
+    if (validate(state).length === 0) return this.setState(state);
+    this.draft = { state, painted: MASK.test(painted ?? '') ? painted : null, at: Date.now() };
+    this.#commit({ type: 'draft' });
+    return '';
   }
 
   /** Solved, keeping this cube's colour scheme and the way it is currently held. */
@@ -108,6 +127,7 @@ export class Session extends EventEmitter {
     }
     if (!followed) Object.assign(this, { plan: null, step: 0, planBase: null });
     this.state = state;
+    this.#turnDraft(list); // the painting is of the same physical cube, so it turns too
     this.history.push({ moves: list, before });
     if (this.history.length > HISTORY) this.history.shift();
     this.#commit({ type: 'moves', moves: list, origin });
@@ -119,12 +139,19 @@ export class Session extends EventEmitter {
     const last = this.history.pop();
     if (!last) return null;
     Object.assign(this, last.before);
+    this.#turnDraft(invertMoves(last.moves));
     this.#commit({ type: 'moves', moves: invertMoves(last.moves), undo: true, origin });
     return last.moves;
   }
 
   get canUndo() {
     return this.history.length > 0;
+  }
+
+  #turnDraft(moves) {
+    if (!this.draft) return;
+    const turn = (s) => s && applyMoves(s, moves.join(' '));
+    this.draft = { ...this.draft, state: turn(this.draft.state), painted: turn(this.draft.painted) };
   }
 
   // One quarter of the current half-turn step done (e.g. R or R' when the step is R2).

@@ -8,7 +8,7 @@ import {
   ACTIONS, FACE_KEYS, FACE_NAMES, MIN_SIZE, MAX_SIZE, SCHEMES, presetOf, faceColors, isScheme,
   loadSettings, saveSettings, defaultSettings, normalizeKey, keyLabel,
 } from './settings.js';
-import { serverAvailable, connect, postState, postMoves, postUndo } from './live.js';
+import { serverAvailable, connect, postState, postDraft, postMoves, postUndo } from './live.js';
 import { validate, colourCounts, holding, COLOURS, COLOUR_NAMES } from './validate.js';
 import { parseState, encodeState, stateToJson, stateLink } from './statefile.js';
 import { applyMoves } from './facelets.js';
@@ -44,6 +44,7 @@ const live = {
   on: false, disconnect: null, snap: null, painting: false, paintColour: 'W',
   paintBase: null, // server state the current painting corresponds to; edits = page differs from it
   conflict: false, // a remote update arrived over unsent edits; waiting for the user to choose
+  draftSent: null, // painting last sent as unfinished; when Claude sets a full cube over it, the page shows that
 };
 
 // The server speaks colour letters (W Y R O G B); the 3D cube draws face keys U R F D L B, and the page's colour
@@ -71,6 +72,7 @@ function paintAt(e) {
   const s = cube.stickerAt(raycaster);
   if (s) {
     cube.paint(s, keyOf(live.paintColour));
+    s.userData.painted = true;
     savePaint();
     renderPaintCheck();
   }
@@ -249,7 +251,9 @@ const PAINT_KEY = 'rubiks-paint-v1';
 function loadPaint() {
   try {
     const p = JSON.parse(localStorage.getItem(PAINT_KEY));
-    return p && /^[WYROGB]{54}$/.test(p.facelets) && (p.paintBase == null || /^[WYROGB]{54}$/.test(p.paintBase)) ? p : null;
+    if (!(p && /^[WYROGB]{54}$/.test(p.facelets) && (p.paintBase == null || /^[WYROGB]{54}$/.test(p.paintBase)))) return null;
+    if (!/^[01]{54}$/.test(p.painted)) p.painted = null;
+    return p;
   } catch {
     return null;
   }
@@ -265,7 +269,9 @@ function writePaint(record) {
 
 function savePaint() {
   const facelets = live.painting && liveFacelets();
-  if (facelets) writePaint({ facelets, paintBase: live.paintBase, paintColour: live.paintColour });
+  if (facelets) {
+    writePaint({ facelets, painted: cube.paintedMask(), paintBase: live.paintBase, paintColour: live.paintColour, draftSent: live.draftSent });
+  }
 }
 
 function clearPaint() {
@@ -281,6 +287,8 @@ function advanceSavedPaint(moves) {
   const rec = loadPaint();
   if (!rec) return;
   rec.facelets = applyMoves(rec.facelets, moves);
+  if (rec.painted) rec.painted = applyMoves(rec.painted, moves); // permutes any characters
+  if (rec.draftSent) rec.draftSent = applyMoves(rec.draftSent, moves); // the server turns its draft too
   if (rec.paintBase) rec.paintBase = applyMoves(rec.paintBase, moves);
   writePaint(rec);
 }
@@ -302,8 +310,10 @@ function onLiveEvent(ev) {
   renderPlan();
   if (ev.type === 'moves') {
     // Turn whatever is shown (server state or the painting), queued after any turns still animating.
-    if (live.painting) live.paintBase = live.paintBase ? applyMoves(live.paintBase, ev.moves) : ev.state;
-    else advanceSavedPaint(ev.moves);
+    if (live.painting) {
+      live.paintBase = live.paintBase ? applyMoves(live.paintBase, ev.moves) : ev.state;
+      if (live.draftSent) live.draftSent = applyMoves(live.draftSent, ev.moves);
+    } else advanceSavedPaint(ev.moves);
     cube.enqueue(parseSequence(ev.moves.join(' '), 3)); // syncLive() double-checks when the queue drains
     if (ev.solved) setMessage('Solved!', 'win');
     return;
@@ -311,6 +321,13 @@ function onLiveEvent(ev) {
   if (live.painting) {
     if (ev.state === live.paintBase) return renderPaintCheck(); // e.g. a reconnect or a plan: nothing to repaint
     const page = liveFacelets();
+    if (ev.type === 'state' && live.draftSent && page === live.draftSent && !cube.busy) {
+      // Claude completed the unfinished cube we sent, and it hasn't been touched since: show Claude's version.
+      live.draftSent = null;
+      clearPaint();
+      setPainting(false);
+      return setMessage('Claude filled in your cube. Check it against your real one.', 'win');
+    }
     // Unedited painting just follows the server; edits are only thrown away if the user says so.
     if (live.conflict || page !== live.paintBase) return showConflict(true);
     live.paintBase = ev.state;
@@ -402,6 +419,7 @@ function setLive(on) {
 /** Open or close Paint. Opening restores the saved painting unless `fresh` (Clear, import). */
 function setPainting(on, { fresh = false } = {}) {
   live.painting = on;
+  live.draftSent = null;
   showConflict(false);
   document.body.classList.toggle('painting', on);
   $('paint-toggle').classList.toggle('active', on);
@@ -414,6 +432,8 @@ function setPainting(on, { fresh = false } = {}) {
       if (!cube.busy) showLive(server);
     } else if (rec) {
       showLive(rec.facelets); // drops any queued turns: the saved painting already includes them
+      cube.setPaintedMask(rec.painted);
+      live.draftSent = rec.draftSent ?? null;
       live.paintBase = rec.paintBase ?? server ?? null;
       if (COLOURS.includes(rec.paintColour)) live.paintColour = rec.paintColour;
       renderPalette();
@@ -450,8 +470,11 @@ function renderPaintCheck() {
   msg.className = errors.length ? 'problem' : 'ok';
   msg.textContent = errors.length ? errors[0] : 'Looks like a real cube. Ready to send.';
   box.replaceChildren(...chips, msg);
-  $('send').disabled = errors.length > 0;
-  $('send').title = errors[0] || '';
+  // An unfinished cube can still go to Claude as a draft: Claude sees it next to the real state and helps fill it in.
+  $('send').textContent = errors.length ? 'Send unfinished to Claude' : 'Send to Claude';
+  $('send').title = errors.length
+    ? 'Claude sees this painting (and which stickers you painted) and helps you work out the rest. Your cube stays as it is until then.'
+    : '';
 }
 
 function renderPalette() {
@@ -490,7 +513,19 @@ $('remote-discard').addEventListener('click', () => {
 $('remote-keep').addEventListener('click', () => showConflict(false));
 $('send').addEventListener('click', async () => {
   const facelets = liveFacelets();
+  const painted = cube.paintedMask();
   if (!facelets) return;
+  if (validate(facelets).length) {
+    try {
+      await postDraft(facelets, painted);
+      live.draftSent = facelets;
+      savePaint(); // Paint stays open: the painting is still the user's until Claude sends a complete cube
+      setMessage('Sent as unfinished. Ask Claude to help you fill in the rest; this page updates when it does.', 'win');
+    } catch (err) {
+      setMessage(err.message, 'error');
+    }
+    return;
+  }
   const base = live.paintBase;
   live.paintBase = facelets; // the server's echo of this state is not a conflicting change
   try {

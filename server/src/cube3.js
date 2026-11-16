@@ -131,8 +131,8 @@ function describeLayer(move, state) {
 }
 
 /** Unfolded cube for chat, using colour initials W Y R O G B. */
-export function asciiNet(state) {
-  const row = (face, r) => [...state.slice(FACES.indexOf(face) * 9 + r * 3, FACES.indexOf(face) * 9 + r * 3 + 3)].join(' ');
+export function asciiNet(state, shown = state) {
+  const row = (face, r) => [...shown.slice(FACES.indexOf(face) * 9 + r * 3, FACES.indexOf(face) * 9 + r * 3 + 3)].join(' ');
   const pad = ' '.repeat(8);
   const lines = [];
   for (let r = 0; r < 3; r++) lines.push(pad + row('U', r));

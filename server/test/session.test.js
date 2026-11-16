@@ -57,3 +57,27 @@ test('a new state clears the undo history', () => {
   s.setState(SOLVED);
   assert.ok(!s.canUndo);
 });
+
+test('an unfinished painting is kept as a draft beside the state, turns with moves, and a full cube replaces it', () => {
+  const s = new Session(null);
+  s.apply('R U');
+  const state = s.state;
+  const bad = 'Y'.repeat(9) + state.slice(9); // 18 yellow stickers
+  const mask = '1'.repeat(27) + '0'.repeat(27);
+  s.setDraft(bad, mask);
+  assert.equal(s.state, state, 'state untouched');
+  assert.ok(s.canUndo, 'undo history kept');
+  assert.equal(s.snapshot().hasDraft, true);
+  s.apply('F');
+  assert.equal(s.draft.state, applyMoves(bad, 'F'));
+  assert.equal(s.draft.painted, applyMoves(mask, 'F'));
+  s.undo();
+  assert.equal(s.draft.state, bad);
+  assert.equal(s.draft.painted, mask);
+  s.setState(SOLVED);
+  assert.equal(s.draft, null);
+  assert.throws(() => s.setDraft('X'.repeat(54)), /54 colour letters/);
+  s.setDraft(applyMoves(SOLVED, 'R'));
+  assert.equal(s.draft, null, 'a valid draft just becomes the state');
+  assert.equal(s.state, applyMoves(SOLVED, 'R'));
+});

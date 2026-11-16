@@ -6,6 +6,9 @@ const INSTRUCTIONS = `This server tracks the user's REAL, physical 3×3 Rubik's 
 Workflow:
 1. Ask the user to open the cube web page, use Paint mode to copy their cube's colours, and press "Send to Claude"
    (or have them describe each face and call set_cube yourself). Then call get_cube.
+   If they could only paint part of it, they can send it unfinished: get_cube then also shows that draft, which
+   stickers they painted by hand, and what is wrong with it. Work out the missing or wrong stickers with them
+   (ask about specific stickers; the rules of a real cube often pin down the rest), then call set_cube with all 54.
    Any colour scheme works (Western, Japanese, custom): the six centre stickers define which colour is which face,
    so always name faces by their centre colour as get_cube reports it, never by a colour you assume.
 2. Before giving moves, tell the user exactly how to hold the cube (the "hold" line) and to keep it that way.
@@ -17,10 +20,30 @@ Workflow:
 const text = (t) => ({ content: [{ type: 'text', text: t }] });
 const fail = (t) => ({ content: [{ type: 'text', text: t }], isError: true });
 
+function draftReport(draft) {
+  const { state, painted } = draft;
+  const shown = painted ? [...state].map((c, i) => (painted[i] === '1' ? c : c.toLowerCase())).join('') : state;
+  const n = painted ? [...painted].filter((x) => x === '1').length : null;
+  return [
+    'UNFINISHED PAINTING: the user sent this from the page but it is not a valid cube yet, so the state above is ' +
+      'unchanged. Help them complete it, then call set_cube with all 54 stickers (that replaces this draft).',
+    `Problems: ${validate(state).join(' ')}`,
+    painted
+      ? `The user painted ${n} of 54 stickers by hand (CAPITALS); lowercase ones were left over from before they started ` +
+        'painting and may well be wrong.'
+      : 'It is not known which stickers the user painted by hand.',
+    '',
+    asciiNet(state, shown),
+    '',
+    `Draft facelets: ${shown}`,
+  ].join('\n');
+}
+
 function report(session, note = '') {
   const { state, plan, step } = session.snapshot();
   const lines = [
     ...(note ? [note, ''] : []),
+    ...(session.draft ? [draftReport(session.draft), '', '--- Current cube state ---', ''] : []),
     `Hold: ${holding(state)}.`,
     `Colour scheme (from the centres): ${schemeText(state)}.`,
     isSolved(state) ? 'The cube is SOLVED.' : 'The cube is not solved.',
@@ -46,7 +69,8 @@ export function buildMcpServer(session) {
     title: 'Get cube',
     description:
       "Current state of the user's physical cube: how to hold it (named by the cube's own centre colours), its colour " +
-      'scheme, a text diagram, and solve progress with each move explained.',
+      'scheme, a text diagram, and solve progress with each move explained. If the user sent an unfinished painting, ' +
+      'it is shown first, with which stickers they painted and what is wrong with it.',
     annotations: { readOnlyHint: true },
   }, async () => text(report(session)));
 
@@ -57,7 +81,7 @@ export function buildMcpServer(session) {
       'top, right, front, bottom, left, back as the user holds the cube, each face read row by row as seen looking ' +
       'straight at it (top with the back edge at the top, bottom with the front edge at the top, side faces with the ' +
       'top up). Any colour scheme is accepted: the six centres decide which colour belongs to which face, so a ' +
-      'Japanese cube (white opposite blue) is fine. Clears the plan.',
+      'Japanese cube (white opposite blue) is fine. Clears the plan and any unfinished painting.',
     inputSchema: { facelets: z.string().length(54).regex(/^[WYROGB]+$/i) },
   }, async ({ facelets }) => {
     const state = facelets.toUpperCase();
