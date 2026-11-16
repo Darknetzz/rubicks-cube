@@ -4,7 +4,7 @@ A configurable NxN (2×2 to 12×12) cube you can solve in the browser. It uses p
 
 ## Dependencies
 
-There's nothing to install: `package.json` has no `dependencies` or `devDependencies`, and there is no build step.
+The page has nothing to install: the root `package.json` has no dependencies and there is no build step. The optional real-cube server (`server/`) has its own dependencies, listed below.
 
 | Dependency | Version | Used for | Loaded from |
 |---|---|---|---|
@@ -13,6 +13,15 @@ There's nothing to install: `package.json` has no `dependencies` or `devDependen
 | Three.js addon `RoundedBoxGeometry` | 0.187.0 | Rounded cubies (`js/cube.js`) | `three/addons/geometries/RoundedBoxGeometry.js` |
 
 To upgrade Three.js, change the version in both import map entries in `index.html`.
+
+Server (`server/package.json`, pinned, installed with `npm ci` or by the Docker build):
+
+| Dependency | Version | Used for |
+|---|---|---|
+| [@modelcontextprotocol/sdk](https://www.npmjs.com/package/@modelcontextprotocol/sdk) | 1.32.2 | MCP Streamable HTTP endpoint |
+| [zod](https://www.npmjs.com/package/zod) | 4.6.7 | MCP tool input schemas |
+| [cubejs](https://github.com/ldez/cubejs) | 1.3.2, vendored in `server/vendor/cubejs` (MIT) | Kociemba two-phase solver. Vendored because its npm package needlessly depends on `npm@6`, which pulls in about 27 MB of packages with known CVEs. |
+| Docker image `node` | 26.13.1-alpine | Container runtime |
 
 Runtime requirements:
 
@@ -26,7 +35,9 @@ Development tools (not installed by the project):
 
 ## Deploy
 
-Copy the files to any static host. `.htaccess` (Apache) returns 404 for `/.git` so the repository isn't exposed when the folder is served straight from a checkout.
+Static only: copy the files to any static host. `.htaccess` (Apache) returns 404 for dotfiles (`.git`, `.env`), `server/`, `data/` and the build/package files, so a checkout can be served directly.
+
+With real-cube mode: run the Docker container (see below) from a checkout outside the web root, and put HTTPS in front of it.
 
 ## Run
 
