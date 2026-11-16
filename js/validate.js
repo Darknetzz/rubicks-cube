@@ -16,6 +16,42 @@ export const OPPOSITE_FACE = { U: 'D', D: 'U', R: 'L', L: 'R', F: 'B', B: 'F' };
 /** Default (Western) scheme, only used for a fresh solved cube and for migrating old face-letter states. */
 export const WESTERN = { U: 'W', R: 'R', F: 'G', D: 'Y', L: 'O', B: 'B' };
 
+/**
+ * The real-cube schemes we know, as a solved cube held one way (any rotation of it is the same scheme).
+ * Japanese: white opposite blue, yellow opposite green, red opposite orange; with white on top and yellow facing
+ * you, orange is on the right (equivalently: green facing you, red on the right).
+ */
+export const JAPANESE = { U: 'W', R: 'R', F: 'G', D: 'B', L: 'O', B: 'Y' };
+export const KNOWN_SCHEMES = { Western: WESTERN, Japanese: JAPANESE };
+
+const VEC = { U: [0, 1, 0], D: [0, -1, 0], R: [1, 0, 0], L: [-1, 0, 0], F: [0, 0, 1], B: [0, 0, -1] };
+const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const faceAt = (v) => Object.keys(VEC).find((f) => VEC[f].every((x, i) => x === v[i]));
+const pairKey = (c) => [[c.U, c.D], [c.R, c.L], [c.F, c.B]].map((p) => p.sort().join('')).sort().join();
+
+/**
+ * How centres (face → colour) relate to a known scheme: { name, mirrored, right } when their opposite pairs match
+ * one, where `right` is the colour that scheme has on the right with these top and front colours; null otherwise.
+ * Not mirrored means the centres are a rotation of that scheme (same handedness).
+ */
+export function compareScheme(centres) {
+  for (const [name, ref] of Object.entries(KNOWN_SCHEMES)) {
+    if (pairKey(centres) !== pairKey(ref)) continue;
+    const faceOf = (colour) => Object.keys(ref).find((f) => ref[f] === colour);
+    // In the reference, top × front = right (x = y × z). Map the state's top and front colours there.
+    const right = ref[faceAt(cross(VEC[faceOf(centres.U)], VEC[faceOf(centres.F)]))];
+    return { name, mirrored: right !== centres.R, right };
+  }
+  return null;
+}
+
+/** How to hold the cube for this state, named by its centre colours. */
+export function holding(state) {
+  const c = (x) => COLOUR_NAMES[state[CENTRES[FACES.indexOf(x)]]];
+  return `${c('U')} centre on top, ${c('F')} centre facing you ` +
+    `(so ${c('D')} is on the bottom, ${c('R')} on the right, ${c('L')} on the left, ${c('B')} at the back)`;
+}
+
 // Facelet indices (Kociemba numbering, 0-based).
 const f = (face, n) => FACES.indexOf(face) * 9 + n - 1;
 const CORNERS = [
@@ -116,6 +152,13 @@ export function validate(state) {
       const sides = [...FACES].filter((_, k) => centres[k] === c).map((s) => SIDE_NAMES[s]);
       return `The ${sides.join(' and ')} faces both have a ${COLOUR_NAMES[c]} centre; each centre must be a different colour.`;
     });
+  }
+
+  const known = compareScheme(centreColours(state));
+  if (known?.mirrored) {
+    const c = centreColours(state);
+    return [`${COLOUR_NAMES[c.R]} and ${COLOUR_NAMES[c.L]} look swapped: is the cube mirrored? On a ${known.name} cube with ` +
+      `${COLOUR_NAMES[c.U]} on top and ${COLOUR_NAMES[c.F]} facing you, ${COLOUR_NAMES[known.right]} is on the right.`];
   }
 
   const s = toFaces(state);

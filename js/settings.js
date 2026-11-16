@@ -1,3 +1,5 @@
+import { WESTERN, JAPANESE } from './validate.js';
+
 const STORAGE_KEY = 'rubiks-cube-settings-v1';
 
 export const MIN_SIZE = 2;
@@ -9,12 +11,15 @@ export const FACE_NAMES = { U: 'Up', D: 'Down', F: 'Front', B: 'Back', L: 'Left'
 // Colour scheme: which colour (W Y R O G B) is on which face of the solved cube, as you hold it.
 // Presets are the common real-cube schemes; any other one-to-one mapping is a custom scheme.
 export const COLOUR_LETTERS = 'WYROGB';
+export const DEFAULT_SCHEME = 'my-cube';
 export const SCHEMES = {
-  western: { label: 'Western / American, white top', scheme: { U: 'W', R: 'R', F: 'G', D: 'Y', L: 'O', B: 'B' } },
+  // The site owner's cube (Japanese scheme), held white on top with yellow facing you: orange right, red left.
+  'my-cube': { label: 'My cube: white top, yellow front', scheme: { U: 'W', R: 'O', F: 'Y', D: 'B', L: 'R', B: 'G' } },
+  western: { label: 'Western / American, white top', scheme: { ...WESTERN } },
   'western-yellow': { label: 'Western / American, yellow top', scheme: { U: 'Y', R: 'O', F: 'G', D: 'W', L: 'R', B: 'B' } },
-  japanese: { label: 'Japanese, white top', scheme: { U: 'W', R: 'R', F: 'G', D: 'B', L: 'O', B: 'Y' } },
+  japanese: { label: 'Japanese, white top, green front', scheme: { ...JAPANESE } },
 };
-const WESTERN_SCHEME = SCHEMES.western.scheme;
+const WESTERN_SCHEME = WESTERN; // what face-keyed settings from before schemes meant
 
 /** True for a one-to-one mapping of the six faces to the six colours. */
 export const isScheme = (x) =>
@@ -49,7 +54,7 @@ export function defaultSettings() {
     size: 3,
     speed: 180,
     scrambleLength: 0,
-    scheme: { ...WESTERN_SCHEME },
+    scheme: { ...SCHEMES[DEFAULT_SCHEME].scheme },
     palette: { W: '#ffffff', Y: '#ffd500', G: '#009b48', B: '#0046ad', R: '#b71234', O: '#ff5800' },
     body: '#151515',
     background: '#1c1f26',
@@ -65,7 +70,8 @@ export function loadSettings() {
     const oldPalette = s.colors && Object.fromEntries(Object.entries(s.colors).map(([f, hex]) => [WESTERN_SCHEME[f], hex]));
     const merged = {
       ...d, ...s,
-      scheme: isScheme(s.scheme) ? { ...s.scheme } : d.scheme,
+      // settings from before schemes existed were drawn in the Western scheme; keep their cube looking the same
+      scheme: isScheme(s.scheme) ? { ...s.scheme } : oldPalette ? { ...WESTERN } : d.scheme,
       palette: { ...d.palette, ...oldPalette, ...s.palette },
       keys: { ...d.keys, ...s.keys },
     };

@@ -61,7 +61,9 @@ test('centre checks: all 24 real orientations pass, wrong centres get one clear 
 
   const swap = (s, i, j) => { const a = [...s]; [a[i], a[j]] = [a[j], a[i]]; return a.join(''); };
   // two centres painted the wrong way round: every piece then disagrees with the scheme they imply
-  for (const [i, j] of [[4, 13], [13, 40]]) {
+  // left and right centres swapped is a mirror image of the Western scheme, and is named as such
+  assert.match(validate(swap(SOLVED, 13, 40))[0], /^orange and red look swapped: is the cube mirrored\?/);
+  for (const [i, j] of [[4, 13]]) {
     const errs = validate(swap(SOLVED, i, j));
     assert.match(errs[0], /pieces don't fit the colour scheme .* Check the six centre stickers first/);
   }

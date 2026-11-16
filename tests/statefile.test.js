@@ -73,6 +73,8 @@ test('old settings (a hex colour per face) migrate to the per-colour palette and
   assert.deepEqual(s.palette, { W: '#eeeeee', Y: '#ffff00', G: '#00ff00', B: '#0000ff', R: '#ff0000', O: '#ff8800' });
   assert.equal(s.colors, undefined);
   store.set('rubiks-cube-settings-v1', JSON.stringify({ scheme: { U: 'W', R: 'W', F: 'G', D: 'B', L: 'O', B: 'Y' } }));
-  assert.deepEqual(loadSettings().scheme, SCHEMES.western.scheme, 'a broken scheme falls back to the default');
+  assert.deepEqual(loadSettings().scheme, SCHEMES['my-cube'].scheme, 'a broken scheme falls back to the default');
+  store.set('rubiks-cube-settings-v1', JSON.stringify({ scheme: SCHEMES.japanese.scheme }));
+  assert.deepEqual(loadSettings().scheme, SCHEMES.japanese.scheme, 'the chosen preset is remembered');
   delete globalThis.localStorage;
 });

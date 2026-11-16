@@ -6,7 +6,7 @@ import { FACES, GEOMETRY, applyMoves, splitMoves } from '../../js/facelets.js';
 import { moveHint } from '../../js/hints.js';
 import { initShortSearch, shortSolve } from './shortsearch.js';
 import {
-  COLOUR_NAMES, SIDE_NAMES, CENTRES, WESTERN, validate, toFaces, fromFaces, solvedLike, centreColours, schemeText,
+  COLOUR_NAMES, SIDE_NAMES, CENTRES, WESTERN, validate, holding, toFaces, fromFaces, solvedLike, centreColours, schemeText,
 } from '../../js/validate.js';
 
 const require = createRequire(import.meta.url);
@@ -14,7 +14,7 @@ const Cube = require('../vendor/cubejs/cube.js');
 require('../vendor/cubejs/solve.js');
 
 export { FACES, GEOMETRY, applyMoves, splitMoves };
-export { COLOUR_NAMES, CENTRES, validate, toFaces, fromFaces, solvedLike, centreColours, schemeText };
+export { COLOUR_NAMES, CENTRES, holding, validate, toFaces, fromFaces, solvedLike, centreColours, schemeText };
 
 /** Solved cube, Western scheme, white top / green front. Only the starting point; any scheme is accepted. */
 export const SOLVED = fromFaces([...FACES].map((x) => x.repeat(9)).join(''));
@@ -45,6 +45,8 @@ const toList = (s) => s.trim().split(/\s+/).filter(Boolean);
  * 1. IDA* for an exact optimal solution (fine for cubes up to ~10 moves from solved), for up to `shortMs`;
  * 2. otherwise Kociemba two-phase, asked again for one move fewer each time it succeeds, until `budgetMs` is used.
  * Returns { moves, optimal, ms }. `optimal` is true when no shorter solution exists (proven by the search).
+ * The budget bounds the search for shorter solutions. cubejs's first two-phase answer can itself take over a second
+ * on some cubes (about 1 in 5 random cubes needs more than 300 ms); then the solve takes that long (`firstMs`).
  * Throws if the state is invalid.
  */
 export function solveDetailed(state, { budgetMs = SOLVE_BUDGET_MS, shortMs = SHORT_SEARCH_MS } = {}) {
@@ -73,6 +75,7 @@ export function solveDetailed(state, { budgetMs = SOLVE_BUDGET_MS, shortMs = SHO
     if (!(err instanceof Cube.SolveTimeout)) throw err;
     first = cube.solve(22);
   }
+  const firstMs = Math.round(performance.now() - t0);
   let best = toList(first);
   while (best.length - 1 > short.provenDepth && Date.now() < deadline) {
     let next;
@@ -85,7 +88,7 @@ export function solveDetailed(state, { budgetMs = SOLVE_BUDGET_MS, shortMs = SHO
     if (next === null) break; // two-phase finds nothing shorter
     best = toList(next);
   }
-  return done(best, best.length <= short.provenDepth + 1);
+  return { ...done(best, best.length <= short.provenDepth + 1), firstMs };
 }
 
 /** Moves of solveDetailed(state). */
@@ -95,13 +98,6 @@ export const solve = (state, options) => solveDetailed(state, options).moves;
 export const randomState = (scheme = WESTERN) => fromFaces(Cube.random().asString(), scheme);
 
 const centreName = (state, face) => COLOUR_NAMES[state[CENTRES[FACES.indexOf(face)]]];
-
-/** How the user must hold the cube for the moves to make sense, named by this cube's own centre colours. */
-export function holding(state) {
-  const c = (x) => centreName(state, x);
-  return `${c('U')} centre on top, ${c('F')} centre facing you ` +
-    `(so ${c('D')} is on the bottom, ${c('R')} on the right, ${c('L')} on the left, ${c('B')} at the back)`;
-}
 
 const AMOUNT = (move) => (move.includes('2') ? 'half turn (180°)' : move.includes("'") ? 'counter-clockwise' : 'clockwise');
 const SLICES = { M: ['L', 'R', 'L'], E: ['U', 'D', 'D'], S: ['F', 'B', 'F'] }; // between a and b, turns like c

@@ -98,6 +98,10 @@ export function formatTurn({ axis, layers, turns }, n) {
 
 export const inverse = (t) => ({ ...t, turns: normTurns(-t.turns) });
 
+/** Inverse of a move sequence in notation (array of tokens): reversed, each move undone (R → R', R' → R, R2 → R2). */
+export const invertMoves = (moves) =>
+  [...moves].reverse().map((m) => (/2'?$/.test(m) ? m.replace(/'$/, '') : m.endsWith("'") ? m.slice(0, -1) : `${m}'`));
+
 const sameLayers = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
 
 /** Append a turn to a history, merging/cancelling with the previous turn on the same layers. */

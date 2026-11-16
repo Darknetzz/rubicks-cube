@@ -141,6 +141,9 @@ select option { color: #000; }
 .server-only, #live-bar, #palette, #paint-clear, #send { display: none; }
 body.has-server .server-only { display: inline-block; }
 body.live [data-cmd] { display: none; }
+body.live [data-cmd='undo'] { display: inline-block; }
+#plan-next { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+#plan-next[hidden] { display: none; }
 body.live #live-bar { display: flex; }
 body.painting #palette, body.painting #paint-clear, body.painting #send { display: flex; }
 button.active { border-color: var(--accent); color: var(--accent); }
@@ -175,6 +178,8 @@ button.active { border-color: var(--accent); color: var(--accent); }
 #plan .current { color: var(--accent); font-weight: 700; }
 #plan-hint { margin-top: 4px; font-size: 15px; color: var(--accent); }
 #plan-hint:empty { display: none; }
+#hold { margin-top: 6px; font-size: 13px; color: var(--muted); }
+#hold:empty { display: none; }
 
 #paint-check { display: none; flex-basis: 100%; flex-wrap: wrap; gap: 6px 10px; align-items: center; justify-content: center; font-size: 13px; }
 body.painting #paint-check { display: flex; }

@@ -94,6 +94,25 @@ async function route(req, res) {
 
   if (pathname === '/healthz') return send(res, 200, { ok: true });
   if (pathname === '/api/events' && req.method === 'GET') return handleEvents(req, res);
+  // Moves done on the real cube, entered on the page (Claude records them with apply_moves), and undo.
+  if (pathname === '/api/moves' || pathname === '/api/undo') {
+    if (req.method !== 'POST') return send(res, 405, { error: 'method not allowed' });
+    const body = (await readBody(req)) ?? {};
+    const origin = typeof body.origin === 'string' ? body.origin.slice(0, 64) : null;
+    try {
+      if (pathname === '/api/undo') {
+        if (!session.undo(origin)) return send(res, 409, { error: 'Nothing to undo.' });
+      } else {
+        const moves = Array.isArray(body.moves) || typeof body.moves === 'string' ? body.moves : '';
+        if (!String(moves).trim()) return send(res, 422, { error: 'No moves given.' });
+        session.apply(moves, origin);
+      }
+      return send(res, 200, session.snapshot());
+    } catch (err) {
+      return send(res, 422, { error: err.message });
+    }
+  }
+
   if (pathname === '/api/state') {
     if (req.method === 'GET') return send(res, 200, session.snapshot());
     if (req.method === 'POST') {

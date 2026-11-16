@@ -29,3 +29,16 @@ export async function postState(state) {
   if (!r.ok) throw new Error(body.error || `Server error ${r.status}`);
   return body;
 }
+
+async function post(path, body) {
+  const r = await fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  const json = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(json.error || `Server error ${r.status}`);
+  return json;
+}
+
+/** Record moves done on the real cube (array of tokens). The page animates them when the server's event arrives. */
+export const postMoves = (moves, origin) => post('api/moves', { moves, origin });
+
+/** Undo the last recorded batch of moves (the page's or Claude's). */
+export const postUndo = (origin) => post('api/undo', { origin });

@@ -8,8 +8,8 @@ import {
   ACTIONS, FACE_KEYS, FACE_NAMES, MIN_SIZE, MAX_SIZE, SCHEMES, presetOf, faceColors, isScheme,
   loadSettings, saveSettings, defaultSettings, normalizeKey, keyLabel,
 } from './settings.js';
-import { serverAvailable, connect, postState } from './live.js';
-import { validate, colourCounts, COLOURS, COLOUR_NAMES } from './validate.js';
+import { serverAvailable, connect, postState, postMoves, postUndo } from './live.js';
+import { validate, colourCounts, holding, COLOURS, COLOUR_NAMES } from './validate.js';
 import { parseState, encodeState, stateToJson, stateLink } from './statefile.js';
 import { applyMoves } from './facelets.js';
 import { hintText } from './hints.js';
@@ -86,7 +86,6 @@ canvas.addEventListener('pointerdown', (e) => {
     canvas.setPointerCapture(e.pointerId);
     return;
   }
-  if (live.on) return; // the real cube is turned by hand, not here
   raycaster.setFromCamera(ndc(e), camera);
   const hit = cube.pick(raycaster);
   if (!hit) return; // background: let OrbitControls orbit
@@ -159,7 +158,7 @@ function fitCamera() {
 
 // ---------- game logic ----------
 function userTurn(turn) {
-  if (live.on) return setMessage('Real-cube mode: moves come from Claude. Use Paint to change colours.');
+  if (live.on) return sendLive(() => postMoves([formatTurn(turn, 3)]));
   pushMerged(state.history, turn);
   if (turn.layers.length !== cube.n) state.moves++; // whole-cube rotations are free
   if (state.scrambled && !state.running) {
@@ -226,8 +225,21 @@ function reset() {
 }
 
 const commands = Object.fromEntries(
-  Object.entries({ scramble, solve, undo, reset }).map(([k, fn]) => [k, () => (live.on ? null : fn())]),
+  Object.entries({ scramble, solve, undo, reset }).map(([k, fn]) => [k, () => (live.on ? liveCommand(k) : fn())]),
 );
+
+// In real-cube mode moves done on the page are recorded on the server, in order, like Claude's apply_moves; the
+// page animates them when the server's event comes back, so it never shows a move the server didn't accept.
+let liveQueue = Promise.resolve();
+function sendLive(request) {
+  if (live.painting) return setMessage('Close Paint to record moves.', 'error');
+  setMessage('');
+  liveQueue = liveQueue.then(request).catch((err) => setMessage(err.message, 'error'));
+}
+
+function liveCommand(name) {
+  if (name === 'undo') sendLive(() => postUndo());
+}
 
 // ---------- real-cube mode ----------
 // The in-progress painting is kept in localStorage until the user presses Clear, sends it, or discards it, so a
@@ -334,7 +346,10 @@ function renderPlan() {
   const snap = live.on && live.snap;
   const hint = $('plan-hint');
   hint.textContent = '';
+  // Same words as the MCP "Hold:" line: the page's front is the face you hold towards you.
+  $('hold').textContent = snap?.state ? `Hold: ${holding(snap.state)}` : '';
   updateArrow();
+  renderLiveButtons();
   if (!snap?.plan) return;
   snap.plan.forEach((m, i) => {
     const span = document.createElement('span');
@@ -345,6 +360,17 @@ function renderPlan() {
   });
   const next = currentMove();
   if (next) hint.textContent = `→ ${next}: ${hintText(next)}`;
+}
+
+function renderLiveButtons() {
+  const next = currentMove();
+  const done = $('plan-next');
+  done.hidden = !next || live.painting;
+  done.textContent = next ? `Done: ${next}` : '';
+  done.title = next ? `Record that you did ${next} on your cube (${hintText(next)})` : '';
+  const undoBtn = document.querySelector('[data-cmd="undo"]');
+  undoBtn.disabled = live.on && !live.snap?.canUndo;
+  undoBtn.title = live.on ? 'Undo the last recorded move(s), yours or Claude\'s' : '';
 }
 
 function setLive(on) {
@@ -361,7 +387,7 @@ function setLive(on) {
       cube.build(3);
       fitCamera();
     }
-    setMessage('Real-cube mode: paint your cube, send it, then ask Claude to solve it.');
+    setMessage('Real-cube mode: paint your cube, send it, then ask Claude to solve it. Turns you make here are recorded as moves on your real cube.');
   } else {
     live.disconnect?.();
     live.snap = null;
@@ -402,6 +428,7 @@ function setPainting(on, { fresh = false } = {}) {
   }
   renderPaintCheck();
   updateArrow();
+  renderLiveButtons();
 }
 // Live feedback while painting: sticker counts per colour, the first problem found, Send only when solvable.
 function renderPaintCheck() {
@@ -446,6 +473,10 @@ function renderPalette() {
 }
 
 $('live-toggle').addEventListener('click', () => setLive(!live.on));
+$('plan-next').addEventListener('click', () => {
+  const next = currentMove();
+  if (next) sendLive(() => postMoves([next]));
+});
 $('paint-toggle').addEventListener('click', () => setPainting(!live.painting));
 $('paint-clear').addEventListener('click', () => {
   clearPaint();
@@ -576,9 +607,13 @@ function applyColors() {
   renderPaintCheck();
 }
 
+const solvedColours = (c) => !!c && [0, 1, 2, 3, 4, 5].every((f) => /^(.)\1{8}$/.test(c.slice(f * 9, f * 9 + 9)));
+
 /**
- * Change which colour is on which face. The virtual cube keeps its pieces, so its colours change; in real-cube
- * mode the stickers keep their colours (they are the real cube's) and only Paint → Clear starts from the new scheme.
+ * Change which colour is on which face. The virtual cube keeps its pieces, so its colours change.
+ * In real-cube mode the stickers shown are the real cube's: when that cube is solved (e.g. you just set up the page
+ * for a Japanese cube), Paint opens with a solved cube in the new scheme, ready to send; otherwise the stickers stay
+ * and only Paint → Clear starts from the new scheme.
  */
 function setScheme(scheme) {
   if (!isScheme(scheme)) return;
@@ -586,10 +621,20 @@ function setScheme(scheme) {
   const colours = live.on ? liveFacelets() : null;
   settings.scheme = { ...scheme };
   save();
-  if (colours) showLive(colours);
   applyColors();
   renderScheme();
-  if (live.on) setMessage('Scheme changed. Paint → Clear now starts from a solved cube in this scheme.');
+  if (!live.on) return;
+  const name = SCHEMES[presetOf(scheme)]?.label ?? 'custom-scheme';
+  if (solvedColours(colours)) {
+    clearPaint();
+    cube.build(3); // solved, drawn in the new scheme
+    setPainting(true, { fresh: true });
+    savePaint();
+    setMessage(`Showing a solved ${name} cube. Press Send to Claude to use it, or close Paint to go back.`);
+  } else {
+    if (colours) showLive(colours);
+    setMessage(`Your cube isn't solved, so its stickers stay as they are. Paint → Clear now starts from a solved ${name} cube.`);
+  }
 }
 
 function renderScheme() {

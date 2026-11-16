@@ -53,7 +53,7 @@ npm start              # npx serve .
 ## Features
 
 - Cube size, turn speed, scramble length, colour scheme, sticker/body/background colours and key bindings, all saved in localStorage
-- Colour scheme presets: Western / American (white top or yellow top) and Japanese (white opposite blue), or a custom one set face by face. Save/load follows the scheme. In real-cube mode, Paint → Clear starts from a solved cube in this scheme. Claude still reads your real cube's scheme from its centres
+- Colour scheme presets: **My cube** (the default: Japanese scheme, white top, yellow front, orange right), Western / American (white top or yellow top), Japanese (white top, green front), or a custom one set face by face. Every preset is a rotation of a real scheme, never a mirror image, and tests check this. Save/load follows the scheme. In real-cube mode, Paint → Clear starts from a solved cube in this scheme. In real-cube mode, picking a preset while the cube is solved opens Paint with a solved cube in that scheme, ready to send. Claude still reads your real cube's scheme from its centres
 - Drag a sticker to turn its layer; drag the background to orbit
 - Keyboard notation: `R L U D F B M E S x y z`, Shift for counter-clockwise, a number prefix for inner layers (`3` then `R` → `3R`)
 - Text input for algorithms (`R U R' U'`, `2Rw`, `r`, `M2`, …)
@@ -77,7 +77,10 @@ Any colour scheme works (Western, Japanese with white opposite blue, or custom).
 
 - **Painting is saved** in the browser as you go, so a reload (or closing Paint) keeps it. It is only dropped by **Clear**, a successful **Send to Claude**, or choosing to discard your edits.
 - **Live while painting:** moves Claude applies animate on the painted cube too, so your edits turn with their layers. Only a full replacement (`set_cube`, `reset_cube`) asks before discarding edits.
+- **Moves and undo on the page:** in real-cube mode, turns you make on the page (drag, keyboard, Apply moves) are recorded as moves on your real cube, exactly like Claude's `apply_moves`. **Done: R2** records the plan's current step in one tap. **Undo** reverts the last recorded move or batch, yours or Claude's, together with the plan as it was. The plan follows the cube's state, so a half turn done as two quarter turns still counts. Setting a new state (Send, `set_cube`, `reset_cube`) starts a fresh undo history.
 - **Next move:** while there is a plan, an arrow on the 3D cube shows the current step. Quarter turns get one head, half turns two heads and a ×2 label. When the turning face is hidden (back, bottom, left), the arrow is drawn on a visible neighbouring face instead, showing which way that layer's stickers move.
+- **Hold:** in real-cube mode the page shows the same "Hold:" line Claude gets. The page draws the cube that way round: top on top, the face you hold towards you at the front, right on the right.
+- **Mirrored centres are rejected:** centres that are a mirror image of a known scheme (Western, Japanese) get a clear message, e.g. "red and orange look swapped: is the cube mirrored?".
 - **Plain-language hints** for every plan move, on the page and in the MCP output, relative to how you hold the cube (e.g. `U` = "top row facing you moves left", `B` = "top of the back layer moves to your left"). Tests check each hint and arrow against the cube model.
 
 MCP tools: `get_cube`, `set_cube`, `solve`, `apply_moves`, `reset_cube`. The endpoint is `/mcp` and requires an `Authorization: Bearer <MCP_TOKEN>` header.
