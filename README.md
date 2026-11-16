@@ -64,7 +64,7 @@ npm start              # npx serve .
 - shares one physical 3×3's state between the page (Paint → **Send to Claude**, then a live view over SSE) and Claude, which reaches it through an MCP endpoint
 - solves it with Kociemba's two-phase algorithm (≤22 moves; vendored [cubejs](https://github.com/ldez/cubejs), MIT)
 
-MCP tools: `get_cube`, `set_cube`, `solve`, `apply_moves`, `reset_cube`. The endpoint is `/mcp` with an `Authorization: Bearer <MCP_TOKEN>` header, or `/mcp/<MCP_TOKEN>`.
+MCP tools: `get_cube`, `set_cube`, `solve`, `apply_moves`, `reset_cube`. The endpoint is `/mcp` and requires an `Authorization: Bearer <MCP_TOKEN>` header.
 
 ```sh
 echo "MCP_TOKEN=$(openssl rand -hex 32)" > .env

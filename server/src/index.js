@@ -60,9 +60,9 @@ function tokenOk(given) {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
-async function handleMcp(req, res, pathToken) {
+async function handleMcp(req, res) {
   const bearer = /^Bearer (.+)$/.exec(req.headers.authorization || '')?.[1];
-  if (!tokenOk(pathToken || bearer)) return send(res, 401, { error: 'unauthorized' });
+  if (!tokenOk(bearer)) return send(res, 401, { error: 'unauthorized' });
   if (req.method !== 'POST') return send(res, 405, { error: 'method not allowed' }); // stateless: no GET stream / DELETE
   const body = await readBody(req);
   const server = buildMcpServer(session);
@@ -89,8 +89,7 @@ function handleEvents(req, res) {
 async function route(req, res) {
   const { pathname } = new URL(req.url, 'http://x');
 
-  const mcp = /^\/mcp(?:\/([^/]+))?\/?$/.exec(pathname);
-  if (mcp) return handleMcp(req, res, mcp[1]);
+  if (pathname === '/mcp' || pathname === '/mcp/') return handleMcp(req, res);
 
   if (pathname === '/healthz') return send(res, 200, { ok: true });
   if (pathname === '/api/events' && req.method === 'GET') return handleEvents(req, res);
