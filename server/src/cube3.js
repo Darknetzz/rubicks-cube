@@ -2,7 +2,8 @@
 // of colour letters W Y R O G B. The colour scheme comes from the centres (see js/validate.js), so any scheme works.
 import { createRequire } from 'node:module';
 import { parseMove } from '../../js/notation.js';
-import { FACES, GEOMETRY, faceletIndex } from '../../js/facelets.js';
+import { FACES, GEOMETRY, applyMoves, splitMoves } from '../../js/facelets.js';
+import { moveHint } from '../../js/hints.js';
 import {
   COLOUR_NAMES, SIDE_NAMES, CENTRES, WESTERN, validate, toFaces, fromFaces, solvedLike, centreColours, schemeText,
 } from '../../js/validate.js';
@@ -11,51 +12,11 @@ const require = createRequire(import.meta.url);
 const Cube = require('../vendor/cubejs/cube.js');
 require('../vendor/cubejs/solve.js');
 
-export { FACES, GEOMETRY };
+export { FACES, GEOMETRY, applyMoves, splitMoves };
 export { COLOUR_NAMES, CENTRES, validate, toFaces, fromFaces, solvedLike, centreColours, schemeText };
 
 /** Solved cube, Western scheme, white top / green front. Only the starting point; any scheme is accepted. */
 export const SOLVED = fromFaces([...FACES].map((x) => x.repeat(9)).join(''));
-
-// Quarter turn about an axis, right-handed.
-function rot([x, y, z], axis, q) {
-  let v = [x, y, z];
-  for (let k = 0; k < ((q % 4) + 4) % 4; k++) {
-    const [a, b, c] = v;
-    v = axis === 0 ? [a, -c, b] : axis === 1 ? [c, b, -a] : [-b, a, c];
-  }
-  return v;
-}
-
-const permCache = new Map();
-function permutation(token) {
-  if (!permCache.has(token)) {
-    const { axis, layers, turns } = parseMove(token, 3);
-    const perm = GEOMETRY.map(({ p, n }, i) => {
-      if (!layers.includes(p[axis] + 1)) return i;
-      return faceletIndex(rot(p, axis, turns), rot(n, axis, turns));
-    });
-    permCache.set(token, perm);
-  }
-  return permCache.get(token);
-}
-
-export function splitMoves(moves) {
-  const list = Array.isArray(moves) ? moves : String(moves).trim().split(/\s+/).filter(Boolean);
-  for (const m of list) parseMove(m, 3); // throws on bad notation
-  return list;
-}
-
-export function applyMoves(state, moves) {
-  let s = state;
-  for (const m of splitMoves(moves)) {
-    const perm = permutation(m);
-    const next = new Array(54);
-    for (let i = 0; i < 54; i++) next[perm[i]] = s[i];
-    s = next.join('');
-  }
-  return s;
-}
 
 export const isSolved = (s) => [0, 1, 2, 3, 4, 5].every((f) => /^(.)\1{8}$/.test(s.slice(f * 9, f * 9 + 9)));
 
@@ -94,8 +55,13 @@ const AMOUNT = (move) => (move.includes('2') ? 'half turn (180°)' : move.includ
 const SLICES = { M: ['L', 'R', 'L'], E: ['U', 'D', 'D'], S: ['F', 'B', 'F'] }; // between a and b, turns like c
 const ROTATIONS = { x: 'R', y: 'U', z: 'F' };
 
-/** Plain-words explanation of one move, using the colours of the centres in `state` (the state before the move). */
-export function describeMove(move, state) {
+/**
+ * Plain-words explanation of one move, using the colours of the centres in `state` (the state before the move),
+ * followed by a direction hint relative to how the user holds the cube (see js/hints.js).
+ */
+export const describeMove = (move, state) => `${describeLayer(move, state)}. Hint: ${moveHint(move).text}`;
+
+function describeLayer(move, state) {
   const { layers } = parseMove(move, 3);
   const amount = AMOUNT(move);
   const raw = move.replace(/^\d+/, '').replace(/['2]/g, '');

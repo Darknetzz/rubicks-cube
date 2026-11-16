@@ -11,6 +11,9 @@ import {
 import { serverAvailable, connect, postState } from './live.js';
 import { validate, colourCounts, COLOURS, COLOUR_NAMES } from './validate.js';
 import { parseState, encodeState, stateToJson, stateLink } from './statefile.js';
+import { applyMoves } from './facelets.js';
+import { hintText } from './hints.js';
+import { MoveArrow } from './arrow.js';
 
 const $ = (id) => document.getElementById(id);
 const settings = loadSettings();
@@ -28,6 +31,7 @@ keyLight.position.set(2, 4, 3);
 camera.add(keyLight); // light follows the view so every face stays readable
 
 const cube = new Cube(scene, settings);
+const arrow = new MoveArrow(scene);
 cube.speed = settings.speed;
 cube.onTurnDone = () => {
   onTurnDone();
@@ -38,8 +42,7 @@ const state = { history: [], moves: 0, scrambled: false, running: false, t0: 0, 
 // Real-cube mode: the page mirrors the server's cube (shared with Claude over MCP).
 const live = {
   on: false, disconnect: null, snap: null, painting: false, paintFace: 'U',
-  paintBase: null, // server state the current painting started from; edits = page differs from it
-  following: false, // painting, unedited, and animating a remote update we accepted
+  paintBase: null, // server state the current painting corresponds to; edits = page differs from it
   conflict: false, // a remote update arrived over unsent edits; waiting for the user to choose
 };
 
@@ -67,6 +70,7 @@ function paintAt(e) {
   const s = cube.stickerAt(raycaster);
   if (s) {
     cube.paint(s, live.paintFace);
+    savePaint();
     renderPaintCheck();
   }
   return !!s;
@@ -149,6 +153,7 @@ function fitCamera() {
   controls.minDistance = n * 1.5;
   controls.maxDistance = n * 8 + 10;
   controls.update();
+  arrow.update(camera);
 }
 
 // ---------- game logic ----------
@@ -224,32 +229,87 @@ const commands = Object.fromEntries(
 );
 
 // ---------- real-cube mode ----------
+// The in-progress painting is kept in localStorage until the user presses Clear, sends it, or discards it, so a
+// reload (or closing Paint) never loses it. MCP moves turn the painted cube too, so edits move with their layers.
+const PAINT_KEY = 'rubiks-paint-v1';
+
+function loadPaint() {
+  try {
+    const p = JSON.parse(localStorage.getItem(PAINT_KEY));
+    return p && /^[WYROGB]{54}$/.test(p.facelets) && (p.paintBase == null || /^[WYROGB]{54}$/.test(p.paintBase)) ? p : null;
+  } catch {
+    return null;
+  }
+}
+
+function writePaint(record) {
+  try {
+    localStorage.setItem(PAINT_KEY, JSON.stringify(record));
+  } catch {
+    /* storage unavailable */
+  }
+}
+
+function savePaint() {
+  const facelets = live.painting && liveFacelets();
+  if (facelets) writePaint({ facelets, paintBase: live.paintBase, paintFace: live.paintFace });
+}
+
+function clearPaint() {
+  try {
+    localStorage.removeItem(PAINT_KEY);
+  } catch {
+    /* storage unavailable */
+  }
+}
+
+/** Moves Claude applied while Paint was closed still turn the saved painting. */
+function advanceSavedPaint(moves) {
+  const rec = loadPaint();
+  if (!rec) return;
+  rec.facelets = applyMoves(rec.facelets, moves);
+  if (rec.paintBase) rec.paintBase = applyMoves(rec.paintBase, moves);
+  writePaint(rec);
+}
+
 function syncLive() {
-  if (!live.snap || cube.busy) return;
-  if (live.painting && !live.following) return; // never overwrite the user's painting
-  live.following = false;
-  if (liveFacelets() !== live.snap.state) showLive(live.snap.state);
-  if (live.painting) renderPaintCheck();
+  if (cube.busy) return;
+  if (live.painting) {
+    // never overwrite the user's painting; it has already turned with any moves
+    savePaint();
+    renderPaintCheck();
+  } else if (live.snap && liveFacelets() !== live.snap.state) {
+    showLive(live.snap.state);
+  }
+  updateArrow();
 }
 
 function onLiveEvent(ev) {
   live.snap = ev;
   renderPlan();
+  if (ev.type === 'moves') {
+    // Turn whatever is shown (server state or the painting), queued after any turns still animating.
+    if (live.painting) live.paintBase = live.paintBase ? applyMoves(live.paintBase, ev.moves) : ev.state;
+    else advanceSavedPaint(ev.moves);
+    cube.enqueue(parseSequence(ev.moves.join(' '), 3)); // syncLive() double-checks when the queue drains
+    if (ev.solved) setMessage('Solved!', 'win');
+    return;
+  }
   if (live.painting) {
-    // Unedited painting just follows the server; edits are only thrown away if the user says so.
+    if (ev.state === live.paintBase) return renderPaintCheck(); // e.g. a reconnect or a plan: nothing to repaint
     const page = liveFacelets();
-    if (live.conflict || (page !== null && page !== live.paintBase)) return showConflict(true);
+    // Unedited painting just follows the server; edits are only thrown away if the user says so.
+    if (live.conflict || page !== live.paintBase) return showConflict(true);
     live.paintBase = ev.state;
-    live.following = true;
   }
-  if (ev.type === 'moves' && cube.n === 3 && !cube.busy) {
-    cube.enqueue(parseSequence(ev.moves.join(' '), 3)); // animate, then syncLive() double-checks
-  } else {
-    showLive(ev.state);
-    live.following = false;
-    if (live.painting) renderPaintCheck();
+  if (!cube.busy) {
+    if (liveFacelets() !== ev.state) showLive(ev.state);
+    if (live.painting) {
+      savePaint();
+      renderPaintCheck();
+    }
   }
-  if (ev.solved && ev.type === 'moves') setMessage('Solved!', 'win');
+  updateArrow();
 }
 
 function showConflict(on) {
@@ -257,17 +317,33 @@ function showConflict(on) {
   $('remote-changed').hidden = !on;
 }
 
+/** The plan's current move, or null when there is nothing to show. */
+function currentMove() {
+  const snap = live.on && live.snap;
+  return snap?.plan && !snap.solved && snap.step < snap.plan.length ? snap.plan[snap.step] : null;
+}
+
+function updateArrow() {
+  arrow.show(!live.painting && !cube.busy ? currentMove() : null);
+}
+
 function renderPlan() {
   const el = $('plan');
   el.replaceChildren();
   const snap = live.on && live.snap;
+  const hint = $('plan-hint');
+  hint.textContent = '';
+  updateArrow();
   if (!snap?.plan) return;
   snap.plan.forEach((m, i) => {
     const span = document.createElement('span');
     span.textContent = m;
+    span.title = hintText(m);
     span.className = i < snap.step ? 'done' : i === snap.step ? 'current' : '';
     el.append(span);
   });
+  const next = currentMove();
+  if (next) hint.textContent = `→ ${next}: ${hintText(next)}`;
 }
 
 function setLive(on) {
@@ -296,18 +372,36 @@ function setLive(on) {
   saveCube();
 }
 
-function setPainting(on) {
+/** Open or close Paint. Opening restores the saved painting unless `fresh` (Clear, import). */
+function setPainting(on, { fresh = false } = {}) {
   live.painting = on;
-  live.paintBase = on ? live.snap?.state ?? liveFacelets() : null;
-  live.following = false;
   showConflict(false);
   document.body.classList.toggle('painting', on);
   $('paint-toggle').classList.toggle('active', on);
-  if (on) setMessage('Paint: pick a colour, tap stickers. Front = the face pointing at you in the default view.');
-  else if (live.on) syncLive();
+  if (on) {
+    const rec = !fresh && loadPaint();
+    const server = live.snap?.state;
+    if (rec && server && rec.paintBase !== server && rec.facelets === rec.paintBase) {
+      clearPaint(); // an unedited painting of an old state: start from the server's instead
+      live.paintBase = server;
+      if (!cube.busy) showLive(server);
+    } else if (rec) {
+      showLive(rec.facelets); // drops any queued turns: the saved painting already includes them
+      live.paintBase = rec.paintBase ?? server ?? null;
+      if (rec.paintFace) live.paintFace = rec.paintFace;
+      renderPalette();
+      if (server && live.paintBase !== server) showConflict(true); // the server changed while Paint was closed
+    } else {
+      live.paintBase = server ?? liveFacelets();
+    }
+    setMessage('Paint: pick a colour, tap stickers. Front = the face pointing at you in the default view.');
+  } else {
+    live.paintBase = null;
+    if (live.on) syncLive();
+  }
   renderPaintCheck();
+  updateArrow();
 }
-
 // Live feedback while painting: sticker counts per colour, the first problem found, Send only when solvable.
 function renderPaintCheck() {
   const box = $('paint-check');
@@ -345,6 +439,7 @@ function renderPalette() {
     b.addEventListener('click', () => {
       live.paintFace = f;
       renderPalette();
+      savePaint();
     });
     box.append(b);
   }
@@ -353,22 +448,27 @@ function renderPalette() {
 $('live-toggle').addEventListener('click', () => setLive(!live.on));
 $('paint-toggle').addEventListener('click', () => setPainting(!live.painting));
 $('paint-clear').addEventListener('click', () => {
+  clearPaint();
   cube.build(3);
-  setPainting(true);
+  setPainting(true, { fresh: true });
 });
 $('remote-discard').addEventListener('click', () => {
-  showConflict(false);
+  clearPaint(); // the user chose to throw the edits away
   setPainting(false); // shows the server's state
 });
 $('remote-keep').addEventListener('click', () => showConflict(false));
 $('send').addEventListener('click', async () => {
   const facelets = liveFacelets();
   if (!facelets) return;
+  const base = live.paintBase;
+  live.paintBase = facelets; // the server's echo of this state is not a conflicting change
   try {
     await postState(facelets);
+    clearPaint();
     setPainting(false);
     setMessage('Sent. Now ask Claude to help you solve it.', 'win');
   } catch (err) {
+    live.paintBase = base;
     setMessage(err.message, 'error');
   }
 });
@@ -573,6 +673,7 @@ new ResizeObserver(resize).observe(canvas);
 renderer.setAnimationLoop((now) => {
   cube.update(now);
   controls.update();
+  arrow.update(camera);
   const ms = state.running ? performance.now() - state.t0 : state.t1 - state.t0;
   $('timer').textContent = fmtTime(Math.max(0, ms));
   renderer.render(scene, camera);
@@ -611,7 +712,8 @@ function importState(text) {
       return false;
     }
     cube.setFacelets(facelets, 3);
-    setPainting(true);
+    setPainting(true, { fresh: true });
+    savePaint();
     setMessage('Loaded. Check it against your cube, then press Send to Claude.');
     return true;
   }
@@ -724,7 +826,10 @@ updateHud();
 
 serverAvailable().then((ok) => {
   document.body.classList.toggle('has-server', ok);
-  if (ok && saved?.live && !live.on) setLive(true);
+  if (ok && saved?.live && !live.on) {
+    setLive(true);
+    if (loadPaint()) setPainting(true); // painting in progress before the reload
+  }
 });
 
 // A shared link (#state=…) loads that cube once, then the hash is dropped so a reload doesn't undo progress.

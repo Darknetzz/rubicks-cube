@@ -68,7 +68,12 @@ npm start              # npx serve .
 - shares one physical 3×3's state between the page (Paint → **Send to Claude**, then a live view over SSE) and Claude, which reaches it through an MCP endpoint
 - solves it with Kociemba's two-phase algorithm (≤22 moves; vendored [cubejs](https://github.com/ldez/cubejs), MIT)
 
-Any colour scheme works (Western, Japanese with white opposite blue, or custom). The state is stored as sticker colours (`W Y R O G B`), and the six centre stickers decide which colour belongs to which face. Validation, the solver and every instruction Claude gets (how to hold the cube, the diagram, move explanations) are worked out from those centres. The page and MCP share one state store. If Claude moves the cube while you are painting, the page follows along when you haven't changed anything, and asks before discarding your edits when you have.
+Any colour scheme works (Western, Japanese with white opposite blue, or custom). The state is stored as sticker colours (`W Y R O G B`), and the six centre stickers decide which colour belongs to which face. Validation, the solver and every instruction Claude gets (how to hold the cube, the diagram, move explanations) are worked out from those centres. The page and MCP share one state store.
+
+- **Painting is saved** in the browser as you go, so a reload (or closing Paint) keeps it. It is only dropped by **Clear**, a successful **Send to Claude**, or choosing to discard your edits.
+- **Live while painting:** moves Claude applies animate on the painted cube too, so your edits turn with their layers. Only a full replacement (`set_cube`, `reset_cube`) asks before discarding edits.
+- **Next move:** while there is a plan, an arrow on the 3D cube shows the current step. Quarter turns get one head, half turns two heads and a ×2 label. When the turning face is hidden (back, bottom, left), the arrow is drawn on a visible neighbouring face instead, showing which way that layer's stickers move.
+- **Plain-language hints** for every plan move, on the page and in the MCP output, relative to how you hold the cube (e.g. `U` = "top row facing you moves left", `B` = "top of the back layer moves to your left"). Tests check each hint and arrow against the cube model.
 
 MCP tools: `get_cube`, `set_cube`, `solve`, `apply_moves`, `reset_cube`. The endpoint is `/mcp` and requires an `Authorization: Bearer <MCP_TOKEN>` header.
 

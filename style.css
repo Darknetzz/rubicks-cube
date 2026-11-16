@@ -165,6 +165,8 @@ button.active { border-color: var(--accent); color: var(--accent); }
 #plan { display: flex; flex-wrap: wrap; gap: 4px 8px; margin-top: 6px; font-family: ui-monospace, Consolas, monospace; font-size: 18px; }
 #plan .done { color: var(--muted); text-decoration: line-through; }
 #plan .current { color: var(--accent); font-weight: 700; }
+#plan-hint { margin-top: 4px; font-size: 15px; color: var(--accent); }
+#plan-hint:empty { display: none; }
 
 #paint-check { display: none; flex-basis: 100%; flex-wrap: wrap; gap: 6px 10px; align-items: center; justify-content: center; font-size: 13px; }
 body.painting #paint-check { display: flex; }

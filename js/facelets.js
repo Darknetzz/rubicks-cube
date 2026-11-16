@@ -3,6 +3,8 @@
 // front edge on top, side faces with U on top). For 3×3 this is exactly the 54-letter string cubejs/Kociemba use.
 // Coordinates: x right, y up, z towards the viewer, cubie centres at -(N-1)/2 … (N-1)/2.
 
+import { parseMove } from './notation.js';
+
 export const FACES = 'URFDLB';
 export const solvedState = (n = 3) => [...FACES].map((f) => f.repeat(n * n)).join('');
 export const SOLVED = solvedState(3);
@@ -39,3 +41,48 @@ export const GEOMETRY = geometryOf(3);
 
 /** Facelet index for a sticker on the cubie at `p` facing `n`, or undefined. */
 export const faceletIndex = (p, n, size = 3) => table(size).index.get(key(p, n));
+
+// ---------- 3×3 moves on facelet strings (shared by the page and the server) ----------
+
+/** Quarter turns about an axis, right-handed (same sense as `turns` in notation.js). */
+export function rotate([x, y, z], axis, q) {
+  let v = [x, y, z];
+  for (let k = 0; k < ((q % 4) + 4) % 4; k++) {
+    const [a, b, c] = v;
+    v = axis === 0 ? [a, -c, b] : axis === 1 ? [c, b, -a] : [-b, a, c];
+  }
+  return v;
+}
+
+const permCache = new Map();
+/** For a 3×3 move token: perm[i] = where facelet i ends up. */
+export function permutation(token) {
+  if (!permCache.has(token)) {
+    const { axis, layers, turns } = parseMove(token, 3);
+    const perm = GEOMETRY.map(({ p, n }, i) => {
+      if (!layers.includes(p[axis] + 1)) return i;
+      return faceletIndex(rotate(p, axis, turns), rotate(n, axis, turns));
+    });
+    permCache.set(token, perm);
+  }
+  return permCache.get(token);
+}
+
+/** Split and check a move sequence (string or array). Throws on bad notation. */
+export function splitMoves(moves) {
+  const list = Array.isArray(moves) ? moves : String(moves).trim().split(/\s+/).filter(Boolean);
+  for (const m of list) parseMove(m, 3);
+  return list;
+}
+
+/** Apply 3×3 moves to a 54-letter facelet string (any letters). */
+export function applyMoves(state, moves) {
+  let s = state;
+  for (const m of splitMoves(moves)) {
+    const perm = permutation(m);
+    const next = new Array(54);
+    for (let i = 0; i < 54; i++) next[perm[i]] = s[i];
+    s = next.join('');
+  }
+  return s;
+}
