@@ -1,9 +1,16 @@
 import { EventEmitter } from 'node:events';
 import { readFileSync, writeFileSync, mkdirSync, renameSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { SOLVED, applyMoves, isSolved, validate, solve, splitMoves } from './cube3.js';
+import { SOLVED, applyMoves, isSolved, validate, solve, splitMoves, fromFaces, solvedLike, centreColours, schemeText } from './cube3.js';
 
-/** The single shared cube: state + current solution plan. Emits 'change' with a snapshot. */
+// States saved before colour letters were introduced used face letters in the Western scheme.
+const migrate = (state) => (typeof state === 'string' && /[UFDL]/.test(state) && /^[URFDLB]{54}$/.test(state) ? fromFaces(state) : state);
+
+/**
+ * The single shared cube: state + current solution plan. Emits 'change' with a snapshot.
+ * The colour scheme lives in the state itself (its centre stickers), so set/apply/get can never disagree about it;
+ * the snapshot spells it out for clients.
+ */
 export class Session extends EventEmitter {
   constructor(file) {
     super();
@@ -13,6 +20,7 @@ export class Session extends EventEmitter {
     this.step = 0;
     try {
       const saved = JSON.parse(readFileSync(file, 'utf8'));
+      saved.state = migrate(saved.state);
       if (validate(saved.state).length === 0) Object.assign(this, { state: saved.state, plan: saved.plan ?? null, step: saved.step ?? 0 });
     } catch {
       /* no saved state yet */
@@ -20,7 +28,14 @@ export class Session extends EventEmitter {
   }
 
   snapshot() {
-    return { state: this.state, solved: isSolved(this.state), plan: this.plan, step: this.step };
+    const { state } = this;
+    return {
+      state,
+      solved: isSolved(state),
+      plan: this.plan,
+      step: this.step,
+      scheme: { centres: centreColours(state), opposites: schemeText(state) },
+    };
   }
 
   #commit(event) {
@@ -36,15 +51,20 @@ export class Session extends EventEmitter {
     this.emit('change', { ...event, ...this.snapshot() });
   }
 
+  /** Replace the state. Returns a note when the colour scheme (opposite pairs) differs from the previous state's. */
   setState(state) {
     const errors = validate(state);
     if (errors.length) throw new Error(errors.join(' '));
+    const before = schemeText(this.state);
+    const after = schemeText(state);
     Object.assign(this, { state, plan: null, step: 0 });
     this.#commit({ type: 'state' });
+    return before === after ? '' : `Colour scheme changed from (${before}) to (${after}).`;
   }
 
+  /** Solved, keeping this cube's colour scheme and the way it is currently held. */
   reset() {
-    this.setState(SOLVED);
+    this.setState(solvedLike(this.state));
   }
 
   solve() {

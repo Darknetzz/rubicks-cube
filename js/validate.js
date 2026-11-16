@@ -1,10 +1,20 @@
-// Checks that a 3×3 facelet string (see facelets.js) is a real, solvable cube. Shared by the page and the server.
+// Colour-level model of a real 3×3, shared by the page and the server.
+//
+// A state is 54 colour letters in Kociemba facelet order (see facelets.js):
+//   W white, Y yellow, R red, O orange, G green, B blue.
+// No colour belongs to a fixed face. The six centre stickers define the scheme: a sticker belongs to the face
+// whose centre has its colour. So any scheme works (Western, Japanese, custom); opposite pairs and handedness come
+// from the centres. The solver only ever sees face letters (toFaces).
 import { FACES } from './facelets.js';
 
-export const COLOUR_NAMES = { U: 'white', R: 'red', F: 'green', D: 'yellow', L: 'orange', B: 'blue' };
+export const COLOURS = 'WYROGB';
+export const COLOUR_NAMES = { W: 'white', Y: 'yellow', R: 'red', O: 'orange', G: 'green', B: 'blue' };
 export const SIDE_NAMES = { U: 'top', D: 'bottom', F: 'front', B: 'back', L: 'left', R: 'right' };
 export const CENTRES = [4, 13, 22, 31, 40, 49];
-const OPPOSITE = { U: 'D', D: 'U', R: 'L', L: 'R', F: 'B', B: 'F' };
+export const OPPOSITE_FACE = { U: 'D', D: 'U', R: 'L', L: 'R', F: 'B', B: 'F' };
+
+/** Default (Western) scheme, only used for a fresh solved cube and for migrating old face-letter states. */
+export const WESTERN = { U: 'W', R: 'R', F: 'G', D: 'Y', L: 'O', B: 'B' };
 
 // Facelet indices (Kociemba numbering, 0-based).
 const f = (face, n) => FACES.indexOf(face) * 9 + n - 1;
@@ -14,46 +24,54 @@ const CORNERS = [
   [f('D', 3), f('F', 9), f('R', 7)], [f('D', 1), f('L', 9), f('F', 7)],
   [f('D', 7), f('B', 9), f('L', 7)], [f('D', 9), f('R', 9), f('B', 7)],
 ];
-const CORNER_COLOURS = ['URF', 'UFL', 'ULB', 'UBR', 'DFR', 'DLF', 'DBL', 'DRB'];
+const CORNER_FACES = ['URF', 'UFL', 'ULB', 'UBR', 'DFR', 'DLF', 'DBL', 'DRB'];
 const EDGES = [
   [f('U', 6), f('R', 2)], [f('U', 8), f('F', 2)], [f('U', 4), f('L', 2)], [f('U', 2), f('B', 2)],
   [f('D', 6), f('R', 8)], [f('D', 2), f('F', 8)], [f('D', 4), f('L', 8)], [f('D', 8), f('B', 8)],
   [f('F', 6), f('R', 4)], [f('F', 4), f('L', 6)], [f('B', 6), f('L', 4)], [f('B', 4), f('R', 6)],
 ];
-const EDGE_COLOURS = ['UR', 'UF', 'UL', 'UB', 'DR', 'DF', 'DL', 'DB', 'FR', 'FL', 'BL', 'BR'];
+const EDGE_FACES = ['UR', 'UF', 'UL', 'UB', 'DR', 'DF', 'DL', 'DB', 'FR', 'FL', 'BL', 'BR'];
 
 const slotName = (idx) => idx.map((i) => SIDE_NAMES[FACES[Math.floor(i / 9)]]).join('-');
-const colourList = (letters) => [...letters].map((c) => COLOUR_NAMES[c]).join('-');
+const names = (letters) => [...letters].map((c) => COLOUR_NAMES[c]).join('-');
 const HINT = ' This is impossible on a real cube; most likely a sticker was entered wrong.';
 
-/** How many stickers of each colour, e.g. { U: 9, R: 10, ... }. */
-export function colourCounts(state) {
-  const counts = Object.fromEntries([...FACES].map((c) => [c, 0]));
-  for (const c of state) if (c in counts) counts[c]++;
-  return counts;
+/** Centre colour of each face, e.g. { U: 'W', R: 'R', ... }. */
+export const centreColours = (state) => Object.fromEntries([...FACES].map((x, k) => [x, state[CENTRES[k]]]));
+
+/** Opposite colour pairs implied by the centres, e.g. [['W','Y'], ['R','O'], ['G','B']]. */
+export function oppositePairs(state) {
+  const c = centreColours(state);
+  return [['U', 'D'], ['R', 'L'], ['F', 'B']].map(([a, b]) => [c[a], c[b]]);
 }
 
-// A real cube's centres are fixed relative to each other: opposite colours on opposite sides, never mirrored.
-function centreErrors(centres) {
-  if (new Set(centres).size !== 6) {
-    const dupes = [...new Set(centres.filter((c, i) => centres.indexOf(c) !== i))];
-    return dupes.map((c) => {
-      const sides = FACES.split('').filter((_, k) => centres[k] === c).map((s) => SIDE_NAMES[s]);
-      return `The ${sides.join(' and ')} faces both have a ${COLOUR_NAMES[c]} centre; each centre must be a different colour.`;
-    });
-  }
-  const errors = [];
-  for (const [a, b] of [['U', 'D'], ['R', 'L'], ['F', 'B']]) {
-    const ca = centres[FACES.indexOf(a)];
-    const cb = centres[FACES.indexOf(b)];
-    if (OPPOSITE[ca] !== cb) {
-      errors.push(`The ${COLOUR_NAMES[ca]} and ${COLOUR_NAMES[cb]} centres are on opposite sides (${SIDE_NAMES[a]} and ${SIDE_NAMES[b]}), but ${COLOUR_NAMES[ca]} is always opposite ${COLOUR_NAMES[OPPOSITE[ca]]}.`);
-    }
-  }
-  if (errors.length) return errors;
-  const urf = ['U', 'R', 'F'].map((s) => centres[FACES.indexOf(s)]).join('');
-  const real = CORNER_COLOURS.some((c) => [c, c.slice(1) + c[0], c.slice(2) + c.slice(0, 2)].includes(urf));
-  return real ? [] : ['The centres are a mirror image of a real cube: two opposite centres (for example left and right) are swapped.'];
+/** "white opposite yellow, red opposite orange, green opposite blue" (pairs sorted so equal schemes read the same). */
+export function schemeText(state) {
+  return oppositePairs(state)
+    .map((p) => p.sort((a, b) => COLOURS.indexOf(a) - COLOURS.indexOf(b)))
+    .sort((a, b) => COLOURS.indexOf(a[0]) - COLOURS.indexOf(b[0]))
+    .map(([a, b]) => `${COLOUR_NAMES[a]} opposite ${COLOUR_NAMES[b]}`)
+    .join(', ');
+}
+
+/** Face-letter string for the solver: each sticker becomes the face whose centre has its colour. */
+export function toFaces(state) {
+  const c = centreColours(state);
+  const face = Object.fromEntries(Object.entries(c).map(([x, col]) => [col, x]));
+  return [...state].map((col) => face[col]).join('');
+}
+
+/** Colour string from face letters, given each face's centre colour (default Western). */
+export const fromFaces = (faces, scheme = WESTERN) => [...faces].map((x) => scheme[x]).join('');
+
+/** The solved cube in this state's scheme and current orientation. */
+export const solvedLike = (state) => fromFaces(FACES, centreColours(state)).split('').map((c) => c.repeat(9)).join('');
+
+/** How many stickers of each colour, e.g. { W: 9, R: 10, ... }. */
+export function colourCounts(state) {
+  const counts = Object.fromEntries([...COLOURS].map((c) => [c, 0]));
+  for (const c of state) if (c in counts) counts[c]++;
+  return counts;
 }
 
 function parity(perm) {
@@ -68,33 +86,48 @@ function parity(perm) {
   return swaps % 2;
 }
 
+// Why a sticker combination can't be a piece in this scheme. `faces` are the face letters its colours map to.
+function whyNotPiece(cols, faces) {
+  for (let i = 0; i < cols.length; i++) {
+    for (let j = i + 1; j < cols.length; j++) {
+      if (cols[i] === cols[j]) return `two ${COLOUR_NAMES[cols[i]]} stickers`;
+      if (OPPOSITE_FACE[faces[i]] === faces[j]) {
+        return `${COLOUR_NAMES[cols[i]]} and ${COLOUR_NAMES[cols[j]]}, but the centres put those colours on opposite sides, so no piece has both`;
+      }
+    }
+  }
+  return 'its colours in mirror-image order (no real corner has them in that order going round)';
+}
+
 /** Human-readable problems; empty when the state is a solvable cube. Stops at the first category that fails. */
 export function validate(state) {
   if (typeof state !== 'string' || state.length !== 54) return ['State must be 54 characters (U R F D L B faces × 9).'];
-  if (!/^[URFDLB]+$/.test(state)) return ['State may only contain the letters U R F D L B.'];
+  if (!/^[WYROGB]+$/.test(state)) {
+    return ['State may only contain the colour letters W Y R O G B (white, yellow, red, orange, green, blue).'];
+  }
 
   const counts = colourCounts(state);
-  const countErrors = [...FACES]
-    .filter((c) => counts[c] !== 9)
-    .map((c) => `${counts[c]} ${COLOUR_NAMES[c]} stickers instead of 9.`);
+  const countErrors = [...COLOURS].filter((c) => counts[c] !== 9).map((c) => `${counts[c]} ${COLOUR_NAMES[c]} stickers instead of 9.`);
   if (countErrors.length) return countErrors;
 
   const centres = CENTRES.map((i) => state[i]);
-  const cErrors = centreErrors(centres);
-  if (cErrors.length) return cErrors;
+  if (new Set(centres).size !== 6) {
+    return [...new Set(centres.filter((c, i) => centres.indexOf(c) !== i))].map((c) => {
+      const sides = [...FACES].filter((_, k) => centres[k] === c).map((s) => SIDE_NAMES[s]);
+      return `The ${sides.join(' and ')} faces both have a ${COLOUR_NAMES[c]} centre; each centre must be a different colour.`;
+    });
+  }
 
-  // Normalise to "which side's centre has this colour" so the standard tables apply.
-  const toSide = Object.fromEntries(centres.map((c, k) => [c, FACES[k]]));
-  const s = [...state].map((c) => toSide[c]).join('');
-  const side = (letter) => COLOUR_NAMES[centres[FACES.indexOf(letter)]];
+  const s = toFaces(state);
   const errors = [];
   const cp = [], co = [], ep = [], eo = [];
 
   CORNERS.forEach((slot, i) => {
     const ori = slot.findIndex((x) => s[x] === 'U' || s[x] === 'D');
-    const piece = ori < 0 ? -1 : CORNER_COLOURS.findIndex((c) => c[0] === s[slot[ori]] && c[1] === s[slot[(ori + 1) % 3]] && c[2] === s[slot[(ori + 2) % 3]]);
+    const piece = ori < 0 ? -1 : CORNER_FACES.findIndex((c) => c[0] === s[slot[ori]] && c[1] === s[slot[(ori + 1) % 3]] && c[2] === s[slot[(ori + 2) % 3]]);
     if (piece < 0) {
-      errors.push(`The ${slotName(slot)} corner reads ${slot.map((x) => side(s[x])).join('-')}, which isn't a real corner piece.`);
+      const cols = slot.map((x) => state[x]).join('');
+      errors.push(`The ${slotName(slot)} corner reads ${names(cols)}: ${whyNotPiece(cols, slot.map((x) => s[x]))}.`);
       return;
     }
     cp[i] = piece;
@@ -102,31 +135,37 @@ export function validate(state) {
   });
   EDGES.forEach((slot, i) => {
     const [a, b] = slot.map((x) => s[x]);
-    let piece = EDGE_COLOURS.indexOf(a + b);
+    let piece = EDGE_FACES.indexOf(a + b);
     let flip = 0;
-    if (piece < 0) { piece = EDGE_COLOURS.indexOf(b + a); flip = 1; }
+    if (piece < 0) { piece = EDGE_FACES.indexOf(b + a); flip = 1; }
     if (piece < 0) {
-      errors.push(`The ${slotName(slot)} edge reads ${side(a)}-${side(b)}, which isn't a real edge piece.`);
+      const cols = slot.map((x) => state[x]).join('');
+      errors.push(`The ${slotName(slot)} edge reads ${names(cols)}: ${whyNotPiece(cols, [a, b])}.`);
       return;
     }
     ep[i] = piece;
     eo[i] = flip;
   });
+  if (errors.length >= 4) {
+    errors.unshift(`${errors.length} pieces don't fit the colour scheme the centres give (${schemeText(state)}). Check the six centre stickers first.`);
+  }
   if (errors.length) return errors;
 
-  const dup = (arr, names, kind) => {
+  const c = centreColours(state);
+  const pieceName = (faces) => names([...faces].map((x) => c[x]).join(''));
+  const dup = (arr, faceNames, kind) => {
     const seen = new Set();
     for (const p of arr) {
-      if (seen.has(p)) errors.push(`The ${colourList([...names[p]].map((l) => centres[FACES.indexOf(l)]).join(''))} ${kind} appears twice.`);
+      if (seen.has(p)) errors.push(`The ${pieceName(faceNames[p])} ${kind} appears twice, so another ${kind} is missing.`);
       seen.add(p);
     }
   };
-  dup(cp, CORNER_COLOURS, 'corner');
-  dup(ep, EDGE_COLOURS, 'edge');
+  dup(cp, CORNER_FACES, 'corner');
+  dup(ep, EDGE_FACES, 'edge');
   if (errors.length) return errors;
 
-  if (co.reduce((a, b) => a + b, 0) % 3) errors.push(`One corner is twisted.${HINT}`);
-  if (eo.reduce((a, b) => a + b, 0) % 2) errors.push(`One edge is flipped.${HINT}`);
-  if (parity(cp) !== parity(ep)) errors.push(`Two pieces are swapped.${HINT}`);
+  if (co.reduce((a, b) => a + b, 0) % 3) errors.push(`One corner is twisted (its stickers are rotated in place).${HINT}`);
+  if (eo.reduce((a, b) => a + b, 0) % 2) errors.push(`One edge is flipped (its two stickers are the wrong way round).${HINT}`);
+  if (parity(cp) !== parity(ep)) errors.push(`Two pieces are swapped (corner and edge permutation parity differ).${HINT}`);
   return errors;
 }

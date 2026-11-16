@@ -1,18 +1,21 @@
-// 3×3 facelet model. A state is a 54-char string in Kociemba order (U1..U9 R1..R9 F1..F9 D1..D9 L1..L9 B1..B9).
-// Each char is a colour identity: the face letter that colour belongs to in the standard scheme
-// (U white, R red, F green, D yellow, L orange, B blue) — independent of how the cube is held.
+// 3×3 facelet model. A state is a 54-char string in Kociemba order (U1..U9 R1..R9 F1..F9 D1..D9 L1..L9 B1..B9)
+// of colour letters W Y R O G B. The colour scheme comes from the centres (see js/validate.js), so any scheme works.
 import { createRequire } from 'node:module';
 import { parseMove } from '../../js/notation.js';
-import { FACES, SOLVED, GEOMETRY, faceletIndex } from '../../js/facelets.js';
-import { COLOUR_NAMES, SIDE_NAMES, CENTRES, validate } from '../../js/validate.js';
+import { FACES, GEOMETRY, faceletIndex } from '../../js/facelets.js';
+import {
+  COLOUR_NAMES, SIDE_NAMES, CENTRES, WESTERN, validate, toFaces, fromFaces, solvedLike, centreColours, schemeText,
+} from '../../js/validate.js';
 
 const require = createRequire(import.meta.url);
 const Cube = require('../vendor/cubejs/cube.js');
 require('../vendor/cubejs/solve.js');
 
-export { FACES, SOLVED, GEOMETRY };
-export { COLOUR_NAMES, CENTRES, validate };
-const INITIAL = { U: 'W', R: 'R', F: 'G', D: 'Y', L: 'O', B: 'B' };
+export { FACES, GEOMETRY };
+export { COLOUR_NAMES, CENTRES, validate, toFaces, fromFaces, solvedLike, centreColours, schemeText };
+
+/** Solved cube, Western scheme, white top / green front. Only the starting point; any scheme is accepted. */
+export const SOLVED = fromFaces([...FACES].map((x) => x.repeat(9)).join(''));
 
 // Quarter turn about an axis, right-handed.
 function rot([x, y, z], axis, q) {
@@ -70,36 +73,58 @@ export function solve(state) {
   if (errors.length) throw new Error(errors.join(' '));
   if (isSolved(state)) return [];
   initSolver();
-  const moves = Cube.fromString(state).solve().trim().split(/\s+/).filter(Boolean);
+  const moves = Cube.fromString(toFaces(state)).solve().trim().split(/\s+/).filter(Boolean);
   if (!isSolved(applyMoves(state, moves))) throw new Error('Solver returned a wrong solution (bug).');
   return moves;
 }
 
-export const randomState = () => Cube.random().asString();
+/** Random solvable state in the given scheme (face → colour, default Western). */
+export const randomState = (scheme = WESTERN) => fromFaces(Cube.random().asString(), scheme);
 
-/** How the user must hold the cube for the moves to make sense. */
-export const holding = (state) =>
-  `${COLOUR_NAMES[state[4]]} centre on top, ${COLOUR_NAMES[state[22]]} centre facing you`;
+const centreName = (state, face) => COLOUR_NAMES[state[CENTRES[FACES.indexOf(face)]]];
 
-export function describeMove(move, state) {
-  const { axis, layers, turns } = parseMove(move, 3);
-  const letter = move.replace(/[^RLUDFBMESxyz]/gi, '')[0];
-  const amount = move.includes('2') ? 'half turn (180°)' : move.includes("'") ? 'counter-clockwise' : 'clockwise';
-  const face = letter.toUpperCase();
-  if ('RLUDFB'.includes(face) && layers.length === 1) {
-    const colour = COLOUR_NAMES[state[CENTRES[FACES.indexOf(face)]]];
-    return `${move}: ${SIDE_NAMES[face]} face (${colour} centre) ${amount}, as seen looking straight at that face`;
-  }
-  return `${move}: ${amount} (axis ${'xyz'[axis]}, ${layers.length} layers, ${turns} quarter turns)`;
+/** How the user must hold the cube for the moves to make sense, named by this cube's own centre colours. */
+export function holding(state) {
+  const c = (x) => centreName(state, x);
+  return `${c('U')} centre on top, ${c('F')} centre facing you ` +
+    `(so ${c('D')} is on the bottom, ${c('R')} on the right, ${c('L')} on the left, ${c('B')} at the back)`;
 }
 
-/** Unfolded cube for chat: W/Y/G/B/R/O initials. */
+const AMOUNT = (move) => (move.includes('2') ? 'half turn (180°)' : move.includes("'") ? 'counter-clockwise' : 'clockwise');
+const SLICES = { M: ['L', 'R', 'L'], E: ['U', 'D', 'D'], S: ['F', 'B', 'F'] }; // between a and b, turns like c
+const ROTATIONS = { x: 'R', y: 'U', z: 'F' };
+
+/** Plain-words explanation of one move, using the colours of the centres in `state` (the state before the move). */
+export function describeMove(move, state) {
+  const { layers } = parseMove(move, 3);
+  const amount = AMOUNT(move);
+  const raw = move.replace(/^\d+/, '').replace(/['2]/g, '');
+  const letter = raw[0];
+  const face = letter.toUpperCase();
+  const side = (x) => `${SIDE_NAMES[x]} face (${centreName(state, x)} centre)`;
+  if ('RLUDFB'.includes(face)) {
+    if (layers.length === 1 && !/^\d/.test(move)) return `${move}: ${side(face)} ${amount}, as seen looking straight at that face`;
+    if (layers.length === 2) return `${move}: ${side(face)} together with the middle layer behind it, ${amount} as seen looking at that face`;
+    return `${move}: middle layer next to the ${side(face)}, ${amount} as seen looking at that face`;
+  }
+  if (SLICES[letter]) {
+    const [a, b, like] = SLICES[letter];
+    return `${move}: middle layer between the ${side(a)} and ${side(b)}, ${amount} as seen looking at the ${SIDE_NAMES[like]} face`;
+  }
+  const after = applyMoves(state, move);
+  return `${move}: turn the whole cube ${amount} as seen looking at the ${side(ROTATIONS[letter])}; ` +
+    `afterwards hold it ${holding(after)}`;
+}
+
+/** Unfolded cube for chat, using colour initials W Y R O G B. */
 export function asciiNet(state) {
-  const row = (face, r) => [...state.slice(FACES.indexOf(face) * 9 + r * 3, FACES.indexOf(face) * 9 + r * 3 + 3)].map((c) => INITIAL[c]).join(' ');
+  const row = (face, r) => [...state.slice(FACES.indexOf(face) * 9 + r * 3, FACES.indexOf(face) * 9 + r * 3 + 3)].join(' ');
   const pad = ' '.repeat(8);
   const lines = [];
   for (let r = 0; r < 3; r++) lines.push(pad + row('U', r));
   for (let r = 0; r < 3; r++) lines.push(['L', 'F', 'R', 'B'].map((x) => row(x, r)).join('   '));
   for (let r = 0; r < 3; r++) lines.push(pad + row('D', r));
-  return `${lines.join('\n')}\n(top, then left front right back, then bottom; W=white Y=yellow G=green B=blue R=red O=orange)`;
+  const label = (x) => `${SIDE_NAMES[x]} (${centreName(state, x)} centre)`;
+  return `${lines.join('\n')}\n(${label('U')}; then ${['L', 'F', 'R', 'B'].map(label).join(', ')}; then ${label('D')}. ` +
+    'W=white Y=yellow R=red O=orange G=green B=blue)';
 }

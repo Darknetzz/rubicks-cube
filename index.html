@@ -48,6 +48,11 @@
       <button id="paint-clear" type="button" title="Start painting from a solved cube">Clear</button>
       <button id="send" type="button">Send to Claude</button>
       <div id="paint-check"></div>
+      <div id="remote-changed" hidden>
+        <span>Claude changed the cube while you were painting. Discard your edits?</span>
+        <button id="remote-discard" type="button">Discard edits</button>
+        <button id="remote-keep" type="button">Keep painting</button>
+      </div>
     </div>
 
     <aside id="panel">

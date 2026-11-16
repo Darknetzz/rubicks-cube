@@ -9,7 +9,7 @@ import {
   loadSettings, saveSettings, defaultSettings, normalizeKey, keyLabel,
 } from './settings.js';
 import { serverAvailable, connect, postState } from './live.js';
-import { validate, colourCounts } from './validate.js';
+import { validate, colourCounts, COLOURS, COLOUR_NAMES } from './validate.js';
 import { parseState, encodeState, stateToJson, stateLink } from './statefile.js';
 
 const $ = (id) => document.getElementById(id);
@@ -36,7 +36,22 @@ cube.onTurnDone = () => {
 
 const state = { history: [], moves: 0, scrambled: false, running: false, t0: 0, t1: 0, prefix: '' };
 // Real-cube mode: the page mirrors the server's cube (shared with Claude over MCP).
-const live = { on: false, disconnect: null, snap: null, painting: false, paintFace: 'U' };
+const live = {
+  on: false, disconnect: null, snap: null, painting: false, paintFace: 'U',
+  paintBase: null, // server state the current painting started from; edits = page differs from it
+  following: false, // painting, unedited, and animating a remote update we accepted
+  conflict: false, // a remote update arrived over unsent edits; waiting for the user to choose
+};
+
+// The server speaks colour letters (W Y R O G B); the 3D cube paints with settings colour keys. This table only picks
+// which colour swatch draws which colour. Faces are never inferred from it: the centres define the scheme.
+const KEY_OF_COLOUR = { W: 'U', Y: 'D', G: 'F', B: 'B', R: 'R', O: 'L' };
+const COLOUR_OF_KEY = Object.fromEntries(Object.entries(KEY_OF_COLOUR).map(([c, k]) => [k, c]));
+const liveFacelets = () => {
+  const keys = cube.n === 3 ? cube.getFacelets() : null;
+  return keys && [...keys].map((k) => COLOUR_OF_KEY[k]).join('');
+};
+const showLive = (colours) => cube.setFacelets([...colours].map((c) => KEY_OF_COLOUR[c]).join(''));
 
 // ---------- mouse / touch turning (registered before OrbitControls so it can veto orbiting) ----------
 const raycaster = new THREE.Raycaster();
@@ -210,20 +225,36 @@ const commands = Object.fromEntries(
 
 // ---------- real-cube mode ----------
 function syncLive() {
-  if (!live.snap || live.painting || cube.busy) return;
-  if (cube.getFacelets() !== live.snap.state) cube.setFacelets(live.snap.state);
+  if (!live.snap || cube.busy) return;
+  if (live.painting && !live.following) return; // never overwrite the user's painting
+  live.following = false;
+  if (liveFacelets() !== live.snap.state) showLive(live.snap.state);
+  if (live.painting) renderPaintCheck();
 }
 
 function onLiveEvent(ev) {
   live.snap = ev;
   renderPlan();
-  if (live.painting) return;
+  if (live.painting) {
+    // Unedited painting just follows the server; edits are only thrown away if the user says so.
+    const page = liveFacelets();
+    if (live.conflict || (page !== null && page !== live.paintBase)) return showConflict(true);
+    live.paintBase = ev.state;
+    live.following = true;
+  }
   if (ev.type === 'moves' && cube.n === 3 && !cube.busy) {
     cube.enqueue(parseSequence(ev.moves.join(' '), 3)); // animate, then syncLive() double-checks
   } else {
-    cube.setFacelets(ev.state);
+    showLive(ev.state);
+    live.following = false;
+    if (live.painting) renderPaintCheck();
   }
   if (ev.solved && ev.type === 'moves') setMessage('Solved!', 'win');
+}
+
+function showConflict(on) {
+  live.conflict = on;
+  $('remote-changed').hidden = !on;
 }
 
 function renderPlan() {
@@ -267,6 +298,9 @@ function setLive(on) {
 
 function setPainting(on) {
   live.painting = on;
+  live.paintBase = on ? live.snap?.state ?? liveFacelets() : null;
+  live.following = false;
+  showConflict(false);
   document.body.classList.toggle('painting', on);
   $('paint-toggle').classList.toggle('active', on);
   if (on) setMessage('Paint: pick a colour, tap stickers. Front = the face pointing at you in the default view.');
@@ -277,17 +311,17 @@ function setPainting(on) {
 // Live feedback while painting: sticker counts per colour, the first problem found, Send only when solvable.
 function renderPaintCheck() {
   const box = $('paint-check');
-  const facelets = cube.getFacelets();
+  const facelets = liveFacelets();
   if (!live.painting || !facelets) return box.replaceChildren();
   const counts = colourCounts(facelets);
   const errors = validate(facelets);
-  const chips = FACE_KEYS.map((f) => {
+  const chips = [...COLOURS].map((c) => {
     const chip = document.createElement('span');
-    chip.className = counts[f] === 9 ? 'chip' : 'chip bad';
-    chip.title = `${FACE_NAMES[f]} colour: ${counts[f]} of 9`;
+    chip.className = counts[c] === 9 ? 'chip' : 'chip bad';
+    chip.title = `${COLOUR_NAMES[c]}: ${counts[c]} of 9`;
     const dot = document.createElement('i');
-    dot.style.background = settings.colors[f];
-    chip.append(dot, String(counts[f]));
+    dot.style.background = settings.colors[KEY_OF_COLOUR[c]];
+    chip.append(dot, String(counts[c]));
     return chip;
   });
   const msg = document.createElement('span');
@@ -301,10 +335,11 @@ function renderPaintCheck() {
 function renderPalette() {
   const box = $('palette');
   box.replaceChildren();
-  for (const f of FACE_KEYS) {
+  for (const c of COLOURS) {
+    const f = KEY_OF_COLOUR[c];
     const b = document.createElement('button');
     b.type = 'button';
-    b.title = FACE_NAMES[f];
+    b.title = COLOUR_NAMES[c];
     b.style.background = settings.colors[f];
     b.classList.toggle('selected', live.paintFace === f);
     b.addEventListener('click', () => {
@@ -321,8 +356,13 @@ $('paint-clear').addEventListener('click', () => {
   cube.build(3);
   setPainting(true);
 });
+$('remote-discard').addEventListener('click', () => {
+  showConflict(false);
+  setPainting(false); // shows the server's state
+});
+$('remote-keep').addEventListener('click', () => showConflict(false));
 $('send').addEventListener('click', async () => {
-  const facelets = cube.getFacelets();
+  const facelets = liveFacelets();
   if (!facelets) return;
   try {
     await postState(facelets);
@@ -453,7 +493,7 @@ function renderColors() {
     l.append(i, label);
     box.append(l);
   };
-  for (const f of FACE_KEYS) add(FACE_NAMES[f], settings.colors[f], (v) => (settings.colors[f] = v));
+  for (const f of FACE_KEYS) add(`${FACE_NAMES[f]} (${COLOUR_NAMES[COLOUR_OF_KEY[f]]})`, settings.colors[f], (v) => (settings.colors[f] = v));
   add('Body', settings.body, (v) => (settings.body = v));
   add('Background', settings.background, (v) => (settings.background = v));
 }

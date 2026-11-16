@@ -1,6 +1,8 @@
 // Export/import of a cube's sticker state: text ("54 letters" for 3×3, "N:letters" otherwise), JSON files and links.
+// Letters are the page's colour keys U R F D L B (the swatch each sticker is drawn with), not the real-cube colour
+// letters; validation converts them to colours first.
 import { FACES } from './facelets.js';
-import { validate, COLOUR_NAMES } from './validate.js';
+import { validate, fromFaces, COLOUR_NAMES, WESTERN } from './validate.js';
 import { MIN_SIZE, MAX_SIZE } from './settings.js';
 
 export const encodeState = (size, facelets) => (size === 3 ? facelets : `${size}:${facelets}`);
@@ -44,12 +46,12 @@ export function parseState(input) {
   if (facelets.length !== want) throw new Error(`A ${size}×${size} needs ${want} letters, got ${facelets.length}.`);
   if (!/^[URFDLB]+$/.test(facelets)) throw new Error('Only the letters U R F D L B are allowed.');
   if (size === 3) {
-    const errors = validate(facelets);
+    const errors = validate(fromFaces(facelets));
     if (errors.length) throw new Error(errors.join(' '));
   } else {
     for (const c of FACES) {
       const count = facelets.split(c).length - 1;
-      if (count !== size * size) throw new Error(`${count} ${COLOUR_NAMES[c]} stickers instead of ${size * size}.`);
+      if (count !== size * size) throw new Error(`${count} ${COLOUR_NAMES[WESTERN[c]]} stickers instead of ${size * size}.`);
     }
   }
   return { size, facelets };

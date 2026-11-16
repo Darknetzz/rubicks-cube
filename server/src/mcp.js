@@ -1,11 +1,13 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { asciiNet, describeMove, holding, validate, isSolved } from './cube3.js';
+import { asciiNet, describeMove, holding, validate, isSolved, schemeText, applyMoves } from './cube3.js';
 
 const INSTRUCTIONS = `This server tracks the user's REAL, physical 3×3 Rubik's cube and solves it.
 Workflow:
 1. Ask the user to open the cube web page, use Paint mode to copy their cube's colours, and press "Send to Claude"
    (or have them describe each face and call set_cube yourself). Then call get_cube.
+   Any colour scheme works (Western, Japanese, custom): the six centre stickers define which colour is which face,
+   so always name faces by their centre colour as get_cube reports it, never by a colour you assume.
 2. Before giving moves, tell the user exactly how to hold the cube (the "hold" line) and to keep it that way.
 3. Call solve. Give the moves 2-4 at a time, explaining each in plain words (the descriptions are provided).
 4. After the user confirms they did a batch, call apply_moves with exactly those moves so the web page animates
@@ -15,14 +17,25 @@ Workflow:
 const text = (t) => ({ content: [{ type: 'text', text: t }] });
 const fail = (t) => ({ content: [{ type: 'text', text: t }], isError: true });
 
-function report(session) {
+function report(session, note = '') {
   const { state, plan, step } = session.snapshot();
-  const lines = [`Hold: ${holding(state)}.`, isSolved(state) ? 'The cube is SOLVED.' : 'The cube is not solved.', '', asciiNet(state)];
+  const lines = [
+    ...(note ? [note, ''] : []),
+    `Hold: ${holding(state)}.`,
+    `Colour scheme (from the centres): ${schemeText(state)}.`,
+    isSolved(state) ? 'The cube is SOLVED.' : 'The cube is not solved.',
+    '',
+    asciiNet(state),
+  ];
   if (plan) {
     lines.push('', `Plan: ${plan.length} moves, ${step} done.`);
-    plan.forEach((m, i) => lines.push(`${i < step ? '✓' : i === step ? '→' : ' '} ${i + 1}. ${describeMove(m, state)}`));
+    let s = state; // describe each remaining move against the cube as it will be when that move is made
+    plan.forEach((m, i) => {
+      lines.push(`${i < step ? '✓' : i === step ? '→' : ' '} ${i + 1}. ${describeMove(m, i < step ? state : s)}`);
+      if (i >= step) s = applyMoves(s, m);
+    });
   }
-  lines.push('', `Facelets (URFDLB order): ${state}`);
+  lines.push('', `Facelets (colour letters; top, right, front, bottom, left, back): ${state}`);
   return lines.join('\n');
 }
 
@@ -31,22 +44,26 @@ export function buildMcpServer(session) {
 
   server.registerTool('get_cube', {
     title: 'Get cube',
-    description: "Current state of the user's physical cube: how to hold it, a text diagram, and solve progress.",
+    description:
+      "Current state of the user's physical cube: how to hold it (named by the cube's own centre colours), its colour " +
+      'scheme, a text diagram, and solve progress with each move explained.',
     annotations: { readOnlyHint: true },
   }, async () => text(report(session)));
 
   server.registerTool('set_cube', {
     title: 'Set cube state',
     description:
-      'Replace the cube state. 54 letters, faces in order U R F D L B (top, right, front, bottom, left, back), ' +
-      'each face read row by row as seen looking straight at it (U with back edge at the top, D with front edge at the top, ' +
-      'side faces with the top up). Letters name colours: U=white R=red F=green D=yellow L=orange B=blue. Clears the plan.',
-    inputSchema: { facelets: z.string().length(54).regex(/^[URFDLB]+$/) },
+      'Replace the cube state. 54 colour letters W Y R O G B (white yellow red orange green blue), faces in order ' +
+      'top, right, front, bottom, left, back as the user holds the cube, each face read row by row as seen looking ' +
+      'straight at it (top with the back edge at the top, bottom with the front edge at the top, side faces with the ' +
+      'top up). Any colour scheme is accepted: the six centres decide which colour belongs to which face, so a ' +
+      'Japanese cube (white opposite blue) is fine. Clears the plan.',
+    inputSchema: { facelets: z.string().length(54).regex(/^[WYROGB]+$/i) },
   }, async ({ facelets }) => {
-    const errors = validate(facelets);
+    const state = facelets.toUpperCase();
+    const errors = validate(state);
     if (errors.length) return fail(`Not a valid cube: ${errors.join(' ')}`);
-    session.setState(facelets);
-    return text(report(session));
+    return text(report(session, session.setState(state)));
   });
 
   server.registerTool('solve', {
@@ -66,6 +83,7 @@ export function buildMcpServer(session) {
     title: 'Apply moves',
     description:
       'Record moves the user has done on the real cube (standard notation, e.g. "R U2 F\'"). ' +
+      'Faces are named by position as the user holds the cube (R = right side, whatever its centre colour). ' +
       'Updates the state, advances the plan and animates the web page.',
     inputSchema: { moves: z.string().min(1) },
   }, async ({ moves }) => {
@@ -81,7 +99,7 @@ export function buildMcpServer(session) {
 
   server.registerTool('reset_cube', {
     title: 'Reset cube',
-    description: 'Set the cube to solved (standard orientation) and clear the plan.',
+    description: "Set the cube to solved in its current colour scheme and orientation, and clear the plan.",
     annotations: { destructiveHint: true },
   }, async () => {
     session.reset();
