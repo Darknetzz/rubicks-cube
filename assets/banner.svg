@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640">
+<rect width="1280" height="640" rx="0" fill="#1c1f26"/>
+
+<defs><radialGradient id="glow" cx="0.27" cy="0.5" r="0.45"><stop offset="0" stop-color="#4f8cff" stop-opacity="0.22"/><stop offset="1" stop-color="#4f8cff" stop-opacity="0"/></radialGradient></defs>
+<rect width="1280" height="640" fill="url(#glow)"/>
+<polygon points="345.00,105.00 531.20,212.50 531.20,427.50 345.00,535.00 158.80,427.50 158.80,212.50" fill="#151515" stroke="#151515" stroke-width="19.35" stroke-linejoin="round"/>
+<g transform="matrix(62.0652 35.8333 -62.0652 35.8333 345.00 105.00)">
+<rect x="0.070" y="0.070" width="0.860" height="0.860" rx="0.120" fill="#ffffff"/>
+<rect x="1.070" y="0.070" width="0.860" height="0.860" rx="0.120" fill="#ffffff"/>
+<rect x="2.070" y="0.070" width="0.860" height="0.860" rx="0.120" fill="#b71234"/>
+<rect x="0.070" y="1.070" width="0.860" height="0.860" rx="0.120" fill="#ffffff"/>
+<rect x="1.070" y="1.070" width="0.860" height="0.860" rx="0.120" fill="#ffffff"/>
+<rect x="2.070" y="1.070" width="0.860" height="0.860" rx="0.120" fill="#ffffff"/>
+<rect x="0.070" y="2.070" width="0.860" height="0.860" rx="0.120" fill="#009b48"/>
+<rect x="1.070" y="2.070" width="0.860" height="0.860" rx="0.120" fill="#ffffff"/>
+<rect x="2.070" y="2.070" width="0.860" height="0.860" rx="0.120" fill="#ffffff"/>
+</g>
+<g transform="matrix(62.0652 35.8333 0.0000 71.6667 158.80 212.50)">
+<rect x="0.070" y="0.070" width="0.860" height="0.860" rx="0.120" fill="#009b48"/>
+<rect x="1.070" y="0.070" width="0.860" height="0.860" rx="0.120" fill="#ffd500"/>
+<rect x="2.070" y="0.070" width="0.860" height="0.860" rx="0.120" fill="#009b48"/>
+<rect x="0.070" y="1.070" width="0.860" height="0.860" rx="0.120" fill="#009b48"/>
+<rect x="1.070" y="1.070" width="0.860" height="0.860" rx="0.120" fill="#009b48"/>
+<rect x="2.070" y="1.070" width="0.860" height="0.860" rx="0.120" fill="#009b48"/>
+<rect x="0.070" y="2.070" width="0.860" height="0.860" rx="0.120" fill="#009b48"/>
+<rect x="1.070" y="2.070" width="0.860" height="0.860" rx="0.120" fill="#009b48"/>
+<rect x="2.070" y="2.070" width="0.860" height="0.860" rx="0.120" fill="#ff5800"/>
+<rect x="0" y="0" width="3" height="3" fill="#000" fill-opacity="0.14"/>
+</g>
+<g transform="matrix(62.0652 -35.8333 0.0000 71.6667 345.00 320.00)">
+<rect x="0.070" y="0.070" width="0.860" height="0.860" rx="0.120" fill="#0046ad"/>
+<rect x="1.070" y="0.070" width="0.860" height="0.860" rx="0.120" fill="#b71234"/>
+<rect x="2.070" y="0.070" width="0.860" height="0.860" rx="0.120" fill="#b71234"/>
+<rect x="0.070" y="1.070" width="0.860" height="0.860" rx="0.120" fill="#b71234"/>
+<rect x="1.070" y="1.070" width="0.860" height="0.860" rx="0.120" fill="#b71234"/>
+<rect x="2.070" y="1.070" width="0.860" height="0.860" rx="0.120" fill="#b71234"/>
+<rect x="0.070" y="2.070" width="0.860" height="0.860" rx="0.120" fill="#b71234"/>
+<rect x="1.070" y="2.070" width="0.860" height="0.860" rx="0.120" fill="#ffffff"/>
+<rect x="2.070" y="2.070" width="0.860" height="0.860" rx="0.120" fill="#b71234"/>
+<rect x="0" y="0" width="3" height="3" fill="#000" fill-opacity="0.28"/>
+</g>
+<g font-family="Lato, 'Helvetica Neue', Arial, sans-serif" fill="#e8e9ec">
+  <text x="650" y="285" font-size="92" font-weight="900" letter-spacing="-1">Rubik&#8217;s Cube</text>
+  <text x="654" y="345" font-size="32" fill="#9aa0ab">2&#215;2 to 12&#215;12 in the browser</text>
+  <text x="654" y="395" font-size="24" fill="#9aa0ab">Three.js &#183; keyboard &amp; touch &#183; real-cube solver via MCP</text>
+  <g transform="translate(654 440)">
+    <rect width="300" height="8" rx="4" fill="#4f8cff"/>
+  </g>
+</g>
+</svg>

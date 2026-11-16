@@ -14,8 +14,9 @@ const STATIC_DIR = resolve(process.env.STATIC_DIR || fileURLToPath(new URL('../.
 const DATA_FILE = process.env.DATA_FILE || join(STATIC_DIR, 'data', 'state.json');
 const MAX_BODY = 64 * 1024;
 
-const MIME = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8' };
-const STATIC = /^\/(index\.html|style\.css|js\/[a-z0-9-]+\.js)$/;
+const MIME = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
+  '.svg': 'image/svg+xml', '.png': 'image/png' };
+const STATIC = /^\/(index\.html|style\.css|js\/[a-z0-9-]+\.js|assets\/[a-z0-9-]+\.(svg|png))$/;
 
 const session = new Session(DATA_FILE);
 const clients = new Set();

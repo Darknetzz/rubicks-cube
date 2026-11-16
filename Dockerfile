@@ -5,6 +5,7 @@ COPY server/package.json server/package-lock.json server/
 RUN cd server && npm ci --omit=dev && npm cache clean --force
 COPY package.json index.html style.css ./
 COPY js js
+COPY assets assets
 COPY server/src server/src
 COPY server/vendor server/vendor
 RUN mkdir /data && chown node:node /data

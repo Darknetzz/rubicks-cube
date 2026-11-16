@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+
+<polygon points="32.00,2.50 57.55,17.25 57.55,46.75 32.00,61.50 6.45,46.75 6.45,17.25" fill="#151515" stroke="#151515" stroke-width="2.65" stroke-linejoin="round"/>
+<g transform="matrix(8.5159 4.9167 -8.5159 4.9167 32.00 2.50)">
+<rect x="0.090" y="0.090" width="0.820" height="0.820" rx="0.160" fill="#ffffff"/>
+<rect x="1.090" y="0.090" width="0.820" height="0.820" rx="0.160" fill="#ffffff"/>
+<rect x="2.090" y="0.090" width="0.820" height="0.820" rx="0.160" fill="#ffffff"/>
+<rect x="0.090" y="1.090" width="0.820" height="0.820" rx="0.160" fill="#ffffff"/>
+<rect x="1.090" y="1.090" width="0.820" height="0.820" rx="0.160" fill="#ffffff"/>
+<rect x="2.090" y="1.090" width="0.820" height="0.820" rx="0.160" fill="#ffffff"/>
+<rect x="0.090" y="2.090" width="0.820" height="0.820" rx="0.160" fill="#ffffff"/>
+<rect x="1.090" y="2.090" width="0.820" height="0.820" rx="0.160" fill="#ffffff"/>
+<rect x="2.090" y="2.090" width="0.820" height="0.820" rx="0.160" fill="#ffffff"/>
+</g>
+<g transform="matrix(8.5159 4.9167 0.0000 9.8333 6.45 17.25)">
+<rect x="0.090" y="0.090" width="0.820" height="0.820" rx="0.160" fill="#009b48"/>
+<rect x="1.090" y="0.090" width="0.820" height="0.820" rx="0.160" fill="#009b48"/>
+<rect x="2.090" y="0.090" width="0.820" height="0.820" rx="0.160" fill="#009b48"/>
+<rect x="0.090" y="1.090" width="0.820" height="0.820" rx="0.160" fill="#009b48"/>
+<rect x="1.090" y="1.090" width="0.820" height="0.820" rx="0.160" fill="#009b48"/>
+<rect x="2.090" y="1.090" width="0.820" height="0.820" rx="0.160" fill="#009b48"/>
+<rect x="0.090" y="2.090" width="0.820" height="0.820" rx="0.160" fill="#009b48"/>
+<rect x="1.090" y="2.090" width="0.820" height="0.820" rx="0.160" fill="#009b48"/>
+<rect x="2.090" y="2.090" width="0.820" height="0.820" rx="0.160" fill="#009b48"/>
+<rect x="0" y="0" width="3" height="3" fill="#000" fill-opacity="0.14"/>
+</g>
+<g transform="matrix(8.5159 -4.9167 0.0000 9.8333 32.00 32.00)">
+<rect x="0.090" y="0.090" width="0.820" height="0.820" rx="0.160" fill="#b71234"/>
+<rect x="1.090" y="0.090" width="0.820" height="0.820" rx="0.160" fill="#b71234"/>
+<rect x="2.090" y="0.090" width="0.820" height="0.820" rx="0.160" fill="#b71234"/>
+<rect x="0.090" y="1.090" width="0.820" height="0.820" rx="0.160" fill="#b71234"/>
+<rect x="1.090" y="1.090" width="0.820" height="0.820" rx="0.160" fill="#b71234"/>
+<rect x="2.090" y="1.090" width="0.820" height="0.820" rx="0.160" fill="#b71234"/>
+<rect x="0.090" y="2.090" width="0.820" height="0.820" rx="0.160" fill="#b71234"/>
+<rect x="1.090" y="2.090" width="0.820" height="0.820" rx="0.160" fill="#b71234"/>
+<rect x="2.090" y="2.090" width="0.820" height="0.820" rx="0.160" fill="#b71234"/>
+<rect x="0" y="0" width="3" height="3" fill="#000" fill-opacity="0.28"/>
+</g>
+</svg>

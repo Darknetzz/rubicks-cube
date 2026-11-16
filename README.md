@@ -1,5 +1,7 @@
 # Rubik's Cube
 
+![Rubik's Cube: 2×2 to 12×12 in the browser](assets/banner.png)
+
 A configurable NxN (2×2 to 12×12) cube you can solve in the browser. It uses plain ES modules and Three.js from a CDN, with no build step.
 
 ## Dependencies

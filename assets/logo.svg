@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+<rect width="512" height="512" rx="96" fill="#1c1f26"/>
+<polygon points="256.00,56.00 429.21,156.00 429.21,356.00 256.00,456.00 82.79,356.00 82.79,156.00" fill="#151515" stroke="#151515" stroke-width="18.00" stroke-linejoin="round"/>
+<g transform="matrix(57.7350 33.3333 -57.7350 33.3333 256.00 56.00)">
+<rect x="0.070" y="0.070" width="0.860" height="0.860" rx="0.120" fill="#ffffff"/>
+<rect x="1.070" y="0.070" width="0.860" height="0.860" rx="0.120" fill="#ffffff"/>
+<rect x="2.070" y="0.070" width="0.860" height="0.860" rx="0.120" fill="#b71234"/>
+<rect x="0.070" y="1.070" width="0.860" height="0.860" rx="0.120" fill="#ffffff"/>
+<rect x="1.070" y="1.070" width="0.860" height="0.860" rx="0.120" fill="#ffffff"/>
+<rect x="2.070" y="1.070" width="0.860" height="0.860" rx="0.120" fill="#ffffff"/>
+<rect x="0.070" y="2.070" width="0.860" height="0.860" rx="0.120" fill="#009b48"/>
+<rect x="1.070" y="2.070" width="0.860" height="0.860" rx="0.120" fill="#ffffff"/>
+<rect x="2.070" y="2.070" width="0.860" height="0.860" rx="0.120" fill="#ffffff"/>
+</g>
+<g transform="matrix(57.7350 33.3333 0.0000 66.6667 82.79 156.00)">
+<rect x="0.070" y="0.070" width="0.860" height="0.860" rx="0.120" fill="#009b48"/>
+<rect x="1.070" y="0.070" width="0.860" height="0.860" rx="0.120" fill="#ffd500"/>
+<rect x="2.070" y="0.070" width="0.860" height="0.860" rx="0.120" fill="#009b48"/>
+<rect x="0.070" y="1.070" width="0.860" height="0.860" rx="0.120" fill="#009b48"/>
+<rect x="1.070" y="1.070" width="0.860" height="0.860" rx="0.120" fill="#009b48"/>
+<rect x="2.070" y="1.070" width="0.860" height="0.860" rx="0.120" fill="#009b48"/>
+<rect x="0.070" y="2.070" width="0.860" height="0.860" rx="0.120" fill="#009b48"/>
+<rect x="1.070" y="2.070" width="0.860" height="0.860" rx="0.120" fill="#009b48"/>
+<rect x="2.070" y="2.070" width="0.860" height="0.860" rx="0.120" fill="#ff5800"/>
+<rect x="0" y="0" width="3" height="3" fill="#000" fill-opacity="0.14"/>
+</g>
+<g transform="matrix(57.7350 -33.3333 0.0000 66.6667 256.00 256.00)">
+<rect x="0.070" y="0.070" width="0.860" height="0.860" rx="0.120" fill="#0046ad"/>
+<rect x="1.070" y="0.070" width="0.860" height="0.860" rx="0.120" fill="#b71234"/>
+<rect x="2.070" y="0.070" width="0.860" height="0.860" rx="0.120" fill="#b71234"/>
+<rect x="0.070" y="1.070" width="0.860" height="0.860" rx="0.120" fill="#b71234"/>
+<rect x="1.070" y="1.070" width="0.860" height="0.860" rx="0.120" fill="#b71234"/>
+<rect x="2.070" y="1.070" width="0.860" height="0.860" rx="0.120" fill="#b71234"/>
+<rect x="0.070" y="2.070" width="0.860" height="0.860" rx="0.120" fill="#b71234"/>
+<rect x="1.070" y="2.070" width="0.860" height="0.860" rx="0.120" fill="#ffffff"/>
+<rect x="2.070" y="2.070" width="0.860" height="0.860" rx="0.120" fill="#b71234"/>
+<rect x="0" y="0" width="3" height="3" fill="#000" fill-opacity="0.28"/>
+</g>
+</svg>
