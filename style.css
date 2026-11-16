@@ -163,3 +163,12 @@ button.active { border-color: var(--accent); color: var(--accent); }
 #plan { display: flex; flex-wrap: wrap; gap: 4px 8px; margin-top: 6px; font-family: ui-monospace, Consolas, monospace; font-size: 18px; }
 #plan .done { color: var(--muted); text-decoration: line-through; }
 #plan .current { color: var(--accent); font-weight: 700; }
+
+#paint-check { display: none; flex-basis: 100%; flex-wrap: wrap; gap: 6px 10px; align-items: center; justify-content: center; font-size: 13px; }
+body.painting #paint-check { display: flex; }
+#paint-check .chip { display: inline-flex; align-items: center; gap: 4px; font-variant-numeric: tabular-nums; }
+#paint-check .chip i { width: 12px; height: 12px; border-radius: 3px; border: 1px solid var(--line); }
+#paint-check .chip.bad { color: #ff6b6b; font-weight: 700; }
+#paint-check .problem { color: #ff6b6b; flex-basis: 100%; text-align: center; }
+#paint-check .ok { color: #5be38a; flex-basis: 100%; text-align: center; }
+button:disabled { opacity: 0.45; cursor: not-allowed; }

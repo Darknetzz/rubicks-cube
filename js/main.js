@@ -9,6 +9,7 @@ import {
   loadSettings, saveSettings, defaultSettings, normalizeKey, keyLabel,
 } from './settings.js';
 import { serverAvailable, connect, postState } from './live.js';
+import { validate, colourCounts } from './validate.js';
 
 const $ = (id) => document.getElementById(id);
 const settings = loadSettings();
@@ -45,7 +46,10 @@ function ndc(e) {
 function paintAt(e) {
   raycaster.setFromCamera(ndc(e), camera);
   const s = cube.stickerAt(raycaster);
-  if (s) cube.paint(s, live.paintFace);
+  if (s) {
+    cube.paint(s, live.paintFace);
+    renderPaintCheck();
+  }
   return !!s;
 }
 
@@ -258,6 +262,31 @@ function setPainting(on) {
   $('paint-toggle').classList.toggle('active', on);
   if (on) setMessage('Paint: pick a colour, tap stickers. Front = the face pointing at you in the default view.');
   else if (live.on) syncLive();
+  renderPaintCheck();
+}
+
+// Live feedback while painting: sticker counts per colour, the first problem found, Send only when solvable.
+function renderPaintCheck() {
+  const box = $('paint-check');
+  const facelets = cube.getFacelets();
+  if (!live.painting || !facelets) return box.replaceChildren();
+  const counts = colourCounts(facelets);
+  const errors = validate(facelets);
+  const chips = FACE_KEYS.map((f) => {
+    const chip = document.createElement('span');
+    chip.className = counts[f] === 9 ? 'chip' : 'chip bad';
+    chip.title = `${FACE_NAMES[f]} colour: ${counts[f]} of 9`;
+    const dot = document.createElement('i');
+    dot.style.background = settings.colors[f];
+    chip.append(dot, String(counts[f]));
+    return chip;
+  });
+  const msg = document.createElement('span');
+  msg.className = errors.length ? 'problem' : 'ok';
+  msg.textContent = errors.length ? errors[0] : 'Looks like a real cube. Ready to send.';
+  box.replaceChildren(...chips, msg);
+  $('send').disabled = errors.length > 0;
+  $('send').title = errors[0] || '';
 }
 
 function renderPalette() {
@@ -395,6 +424,7 @@ function applyColors() {
   scene.background = new THREE.Color(settings.background);
   document.documentElement.style.setProperty('--bg', settings.background);
   renderPalette();
+  renderPaintCheck();
 }
 
 function renderColors() {

@@ -43,6 +43,28 @@ test('validate accepts real states and catches impossible ones', () => {
   assert.match(validate(swap(SOLVED, 0, 9)).join(), /isn't a real|appears twice/);
 });
 
+test('centre checks: all 24 real orientations pass, wrong centres get one clear message', () => {
+  const seen = new Set();
+  for (const a of ['', 'x', 'x2', "x'", 'z', "z'"]) {
+    for (const b of ['', 'y', 'y2', "y'"]) {
+      const s = applyMoves(SOLVED, `${a} ${b} R U F'`.trim());
+      assert.deepEqual(validate(s), [], `${a} ${b}`);
+      seen.add([4, 13, 22, 31, 40, 49].map((i) => s[i]).join(''));
+    }
+  }
+  assert.equal(seen.size, 24);
+
+  const swap = (s, i, j) => { const a = [...s]; [a[i], a[j]] = [a[j], a[i]]; return a.join(''); };
+  // top and right centres swapped: white now opposite orange
+  const adj = validate(swap(SOLVED, 4, 13));
+  assert.equal(adj.length, 2);
+  assert.match(adj[0], /white and yellow|red and yellow|centres are on opposite sides/);
+  // left and right centres swapped: mirror image
+  assert.deepEqual(validate(swap(SOLVED, 13, 40)), ['The centres are a mirror image of a real cube: two opposite centres (for example left and right) are swapped.']);
+  // a centre painted with another face's colour (counts fixed by swapping with an edge sticker)
+  assert.match(validate(swap(SOLVED, 4, 10)).join(), /top and right faces both have a red centre/);
+});
+
 test('solve returns short, correct solutions', () => {
   assert.deepEqual(solve(SOLVED), []);
   for (let i = 0; i < 30; i++) {
