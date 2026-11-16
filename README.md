@@ -46,8 +46,24 @@ npm start              # npx serve .
 - Timer and move counter that start after a scramble and stop when the cube is solved
 - Undo, and an auto-Solve that plays back the inverse of the scramble plus your moves
 
+## Real-cube mode + MCP server
+
+`server/` is a small Node service that serves the page and also:
+
+- shares one physical 3×3's state between the page (Paint → **Send to Claude**, then a live view over SSE) and Claude, which reaches it through an MCP endpoint
+- solves it with Kociemba's two-phase algorithm (≤22 moves; vendored [cubejs](https://github.com/ldez/cubejs), MIT)
+
+MCP tools: `get_cube`, `set_cube`, `solve`, `apply_moves`, `reset_cube`. The endpoint is `/mcp` with an `Authorization: Bearer <MCP_TOKEN>` header, or `/mcp/<MCP_TOKEN>`.
+
+```sh
+echo "MCP_TOKEN=$(openssl rand -hex 32)" > .env
+docker compose up -d --build        # http://localhost:8095 (CUBE_PORT to change)
+```
+
+Real-cube mode is only offered when the page is served by this server.
+
 ## Test
 
 ```sh
-npm test
+(cd server && npm ci) && npm test
 ```

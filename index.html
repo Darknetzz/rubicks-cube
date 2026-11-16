@@ -23,6 +23,7 @@
       <div id="message"></div>
       <div id="prefix"></div>
       <div id="history"></div>
+      <div id="plan"></div>
     </div>
 
     <nav id="toolbar">
@@ -30,8 +31,17 @@
       <button data-cmd="solve">Solve</button>
       <button data-cmd="undo">Undo</button>
       <button data-cmd="reset">Reset</button>
+      <button id="live-toggle" class="server-only" title="Mirror your physical cube and let Claude solve it">Real cube</button>
       <button id="toggle-panel">Settings</button>
     </nav>
+
+    <div id="live-bar">
+      <span id="live-status"></span>
+      <button id="paint-toggle" type="button">Paint</button>
+      <div id="palette"></div>
+      <button id="paint-clear" type="button" title="Start painting from a solved cube">Clear</button>
+      <button id="send" type="button">Send to Claude</button>
+    </div>
 
     <aside id="panel">
       <section>

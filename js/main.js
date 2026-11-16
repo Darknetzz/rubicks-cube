@@ -8,6 +8,7 @@ import {
   ACTIONS, FACE_KEYS, FACE_NAMES, MIN_SIZE, MAX_SIZE,
   loadSettings, saveSettings, defaultSettings, normalizeKey, keyLabel,
 } from './settings.js';
+import { serverAvailable, connect, postState } from './live.js';
 
 const $ = (id) => document.getElementById(id);
 const settings = loadSettings();
@@ -29,6 +30,8 @@ cube.speed = settings.speed;
 cube.onTurnDone = onTurnDone;
 
 const state = { history: [], moves: 0, scrambled: false, running: false, t0: 0, t1: 0, prefix: '' };
+// Real-cube mode: the page mirrors the server's cube (shared with Claude over MCP).
+const live = { on: false, disconnect: null, snap: null, painting: false, paintFace: 'U' };
 
 // ---------- mouse / touch turning (registered before OrbitControls so it can veto orbiting) ----------
 const raycaster = new THREE.Raycaster();
@@ -39,8 +42,23 @@ function ndc(e) {
   return new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
 }
 
+function paintAt(e) {
+  raycaster.setFromCamera(ndc(e), camera);
+  const s = cube.stickerAt(raycaster);
+  if (s) cube.paint(s, live.paintFace);
+  return !!s;
+}
+
 canvas.addEventListener('pointerdown', (e) => {
   if (e.button !== 0 || drag || cube.busy) return;
+  if (live.painting) {
+    if (!paintAt(e)) return;
+    controls.enabled = false;
+    drag = { paint: true, id: e.pointerId };
+    canvas.setPointerCapture(e.pointerId);
+    return;
+  }
+  if (live.on) return; // the real cube is turned by hand, not here
   raycaster.setFromCamera(ndc(e), camera);
   const hit = cube.pick(raycaster);
   if (!hit) return; // background: let OrbitControls orbit
@@ -50,6 +68,7 @@ canvas.addEventListener('pointerdown', (e) => {
 });
 
 canvas.addEventListener('pointermove', (e) => {
+  if (drag?.paint && e.pointerId === drag.id) return void paintAt(e);
   if (!drag || drag.done || e.pointerId !== drag.id) return;
   const dx = e.clientX - drag.x;
   const dy = e.clientY - drag.y;
@@ -111,6 +130,7 @@ function fitCamera() {
 
 // ---------- game logic ----------
 function userTurn(turn) {
+  if (live.on) return setMessage('Real-cube mode: moves come from Claude. Use Paint to change colours.');
   pushMerged(state.history, turn);
   if (turn.layers.length !== cube.n) state.moves++; // whole-cube rotations are free
   if (state.scrambled && !state.running) {
@@ -123,6 +143,7 @@ function userTurn(turn) {
 }
 
 function onTurnDone() {
+  if (live.on) return syncLive();
   if (cube.busy || !cube.isSolved()) return;
   state.history.length = 0;
   if (state.running) {
@@ -171,7 +192,109 @@ function reset() {
   updateHud();
 }
 
-const commands = { scramble, solve, undo, reset };
+const commands = Object.fromEntries(
+  Object.entries({ scramble, solve, undo, reset }).map(([k, fn]) => [k, () => (live.on ? null : fn())]),
+);
+
+// ---------- real-cube mode ----------
+function syncLive() {
+  if (!live.snap || live.painting || cube.busy) return;
+  if (cube.getFacelets() !== live.snap.state) cube.setFacelets(live.snap.state);
+}
+
+function onLiveEvent(ev) {
+  live.snap = ev;
+  renderPlan();
+  if (live.painting) return;
+  if (ev.type === 'moves' && cube.n === 3 && !cube.busy) {
+    cube.enqueue(parseSequence(ev.moves.join(' '), 3)); // animate, then syncLive() double-checks
+  } else {
+    cube.setFacelets(ev.state);
+  }
+  if (ev.solved && ev.type === 'moves') setMessage('Solved!', 'win');
+}
+
+function renderPlan() {
+  const el = $('plan');
+  el.replaceChildren();
+  const snap = live.on && live.snap;
+  if (!snap?.plan) return;
+  snap.plan.forEach((m, i) => {
+    const span = document.createElement('span');
+    span.textContent = m;
+    span.className = i < snap.step ? 'done' : i === snap.step ? 'current' : '';
+    el.append(span);
+  });
+}
+
+function setLive(on) {
+  live.on = on;
+  document.body.classList.toggle('live', on);
+  $('live-toggle').classList.toggle('active', on);
+  setPainting(false);
+  if (on) {
+    live.disconnect = connect(onLiveEvent, (ok) => {
+      $('live-status').textContent = ok ? 'Connected' : 'Reconnecting…';
+      $('live-status').className = ok ? 'ok' : 'error';
+    });
+    if (cube.n !== 3) {
+      cube.build(3);
+      fitCamera();
+    }
+    setMessage('Real-cube mode: paint your cube, send it, then ask Claude to solve it.');
+  } else {
+    live.disconnect?.();
+    live.snap = null;
+    reset();
+    fitCamera();
+  }
+  renderPlan();
+  updateHud();
+}
+
+function setPainting(on) {
+  live.painting = on;
+  document.body.classList.toggle('painting', on);
+  $('paint-toggle').classList.toggle('active', on);
+  if (on) setMessage('Paint: pick a colour, tap stickers. Front = the face pointing at you in the default view.');
+  else if (live.on) syncLive();
+}
+
+function renderPalette() {
+  const box = $('palette');
+  box.replaceChildren();
+  for (const f of FACE_KEYS) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.title = FACE_NAMES[f];
+    b.style.background = settings.colors[f];
+    b.classList.toggle('selected', live.paintFace === f);
+    b.addEventListener('click', () => {
+      live.paintFace = f;
+      renderPalette();
+    });
+    box.append(b);
+  }
+}
+
+$('live-toggle').addEventListener('click', () => setLive(!live.on));
+$('paint-toggle').addEventListener('click', () => setPainting(!live.painting));
+$('paint-clear').addEventListener('click', () => {
+  cube.build(3);
+  setPainting(true);
+});
+$('send').addEventListener('click', async () => {
+  const facelets = cube.getFacelets();
+  if (!facelets) return;
+  try {
+    await postState(facelets);
+    setPainting(false);
+    setMessage('Sent. Now ask Claude to help you solve it.', 'win');
+  } catch (err) {
+    setMessage(err.message, 'error');
+  }
+});
+serverAvailable().then((ok) => document.body.classList.toggle('has-server', ok));
 
 // ---------- HUD ----------
 function fmtTime(ms) {
@@ -271,6 +394,7 @@ function applyColors() {
   cube.setColors(settings.colors, settings.body);
   scene.background = new THREE.Color(settings.background);
   document.documentElement.style.setProperty('--bg', settings.background);
+  renderPalette();
 }
 
 function renderColors() {

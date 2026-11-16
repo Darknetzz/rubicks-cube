@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { faceletIndex } from './facelets.js';
 
 const AXES = [new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 1)];
 const Z = new THREE.Vector3(0, 0, 1);
@@ -163,6 +164,38 @@ export class Cube {
       else if (face !== s.userData.face) return false;
     }
     return true;
+  }
+
+  #faceletOf(sticker) {
+    const n = sticker.userData.normal.clone().applyQuaternion(sticker.parent.quaternion);
+    return faceletIndex(sticker.parent.position.toArray(), n.toArray());
+  }
+
+  /** 3×3 only, when idle: 54-char Kociemba-order string of colour letters (see facelets.js). */
+  getFacelets() {
+    if (this.n !== 3 || this.busy) return null;
+    const out = new Array(54);
+    for (const s of this.stickers) out[this.#faceletOf(s)] = s.userData.face;
+    return out.join('');
+  }
+
+  /** Rebuild as a 3×3 in standard orientation and colour every sticker from a facelet string. */
+  setFacelets(str) {
+    this.build(3);
+    for (const s of this.stickers) this.paint(s, str[this.#faceletOf(s)]);
+  }
+
+  paint(sticker, face) {
+    sticker.material = this.faceMats[face];
+    sticker.userData.face = face;
+  }
+
+  /** Sticker under the ray (a hit on the gap around it counts too), or null. */
+  stickerAt(raycaster) {
+    const hit = this.pick(raycaster);
+    if (!hit) return null;
+    const v = new THREE.Vector3();
+    return hit.cubie.children.find((s) => v.copy(s.userData.normal).applyQuaternion(hit.cubie.quaternion).dot(hit.normal) > 0.9) ?? null;
   }
 
   /** Raycast to an outer face: returns { cubie, point, normal } with an axis-aligned normal, or null. */

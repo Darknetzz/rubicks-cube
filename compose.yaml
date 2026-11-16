@@ -1,0 +1,13 @@
+services:
+  cube:
+    build: .
+    image: rubiks-cube
+    restart: unless-stopped
+    ports:
+      - "${CUBE_PORT:-8095}:3000"
+    env_file: .env
+    volumes:
+      - cube-data:/data
+
+volumes:
+  cube-data:

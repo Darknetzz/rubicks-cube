@@ -1,1 +1,2 @@
-RedirectMatch 404 /\.git
+# Only the static app is public; hide repo internals, server code and dotfiles.
+RedirectMatch 404 "/(\.[^/]*|server|data|node_modules|tests|Dockerfile|compose\.yaml|package(-lock)?\.json|README\.md)(/|$)"
