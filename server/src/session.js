@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events';
 import { readFileSync, writeFileSync, mkdirSync, renameSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { SOLVED, applyMoves, isSolved, validate, solve, splitMoves, fromFaces, solvedLike, centreColours, schemeText } from './cube3.js';
+import { SOLVED, applyMoves, isSolved, validate, solveDetailed, splitMoves, fromFaces, solvedLike, centreColours, schemeText } from './cube3.js';
 
 // States saved before colour letters were introduced used face letters in the Western scheme.
 const migrate = (state) => (typeof state === 'string' && /[UFDL]/.test(state) && /^[URFDLB]{54}$/.test(state) ? fromFaces(state) : state);
@@ -67,11 +67,13 @@ export class Session extends EventEmitter {
     this.setState(solvedLike(this.state));
   }
 
+  /** Compute and store a plan. Returns { moves, optimal, ms } (see solveDetailed). */
   solve() {
-    this.plan = solve(this.state);
+    const result = solveDetailed(this.state);
+    this.plan = result.moves;
     this.step = 0;
     this.#commit({ type: 'plan' });
-    return this.plan;
+    return result;
   }
 
   /** Record moves done on the real cube. Returns whether they followed the plan. */

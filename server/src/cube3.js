@@ -4,6 +4,7 @@ import { createRequire } from 'node:module';
 import { parseMove } from '../../js/notation.js';
 import { FACES, GEOMETRY, applyMoves, splitMoves } from '../../js/facelets.js';
 import { moveHint } from '../../js/hints.js';
+import { initShortSearch, shortSolve } from './shortsearch.js';
 import {
   COLOUR_NAMES, SIDE_NAMES, CENTRES, WESTERN, validate, toFaces, fromFaces, solvedLike, centreColours, schemeText,
 } from '../../js/validate.js';
@@ -20,24 +21,67 @@ export const SOLVED = fromFaces([...FACES].map((x) => x.repeat(9)).join(''));
 
 export const isSolved = (s) => [0, 1, 2, 3, 4, 5].every((f) => /^(.)\1{8}$/.test(s.slice(f * 9, f * 9 + 9)));
 
+// Time budgets in ms (env: SOLVE_BUDGET_MS for the whole solve, SHORT_SEARCH_MS for the optimal search inside it).
+const envMs = (name, fallback) => {
+  const v = Number(process.env[name]);
+  return Number.isFinite(v) && v > 0 ? v : fallback;
+};
+export const SOLVE_BUDGET_MS = envMs('SOLVE_BUDGET_MS', 2000);
+export const SHORT_SEARCH_MS = envMs('SHORT_SEARCH_MS', 300);
+
 let solverReady = false;
 export function initSolver() {
   if (!solverReady) {
     Cube.initSolver();
+    initShortSearch();
     solverReady = true;
   }
 }
 
-/** Near-optimal (Kociemba two-phase) solution as a list of moves. Throws if the state is invalid. */
-export function solve(state) {
+const toList = (s) => s.trim().split(/\s+/).filter(Boolean);
+
+/**
+ * Shortest solution found within the time budget:
+ * 1. IDA* for an exact optimal solution (fine for cubes up to ~10 moves from solved), for up to `shortMs`;
+ * 2. otherwise Kociemba two-phase, asked again for one move fewer each time it succeeds, until `budgetMs` is used.
+ * Returns { moves, optimal, ms }. `optimal` is true when no shorter solution exists (proven by the search).
+ * Throws if the state is invalid.
+ */
+export function solveDetailed(state, { budgetMs = SOLVE_BUDGET_MS, shortMs = SHORT_SEARCH_MS } = {}) {
   const errors = validate(state);
   if (errors.length) throw new Error(errors.join(' '));
-  if (isSolved(state)) return [];
+  const t0 = performance.now();
+  const done = (moves, optimal) => {
+    if (!isSolved(applyMoves(state, moves))) throw new Error('Solver returned a wrong solution (bug).');
+    return { moves, optimal, ms: Math.round(performance.now() - t0) };
+  };
+  if (isSolved(state)) return done([], true);
   initSolver();
-  const moves = Cube.fromString(toFaces(state)).solve().trim().split(/\s+/).filter(Boolean);
-  if (!isSolved(applyMoves(state, moves))) throw new Error('Solver returned a wrong solution (bug).');
-  return moves;
+  const faces = toFaces(state);
+
+  const short = shortSolve(faces, t0 + Math.min(shortMs, budgetMs));
+  if (short.moves) return done(short.moves, true);
+
+  // The first two-phase answer has no deadline: it always comes back fast and something must be returned.
+  const cube = Cube.fromString(faces);
+  let best = toList(cube.solve());
+  const deadline = Date.now() + Math.max(0, budgetMs - (performance.now() - t0));
+  while (best.length - 1 > short.provenDepth && Date.now() < deadline) {
+    let next;
+    try {
+      next = cube.solve(best.length - 1, deadline);
+    } catch (err) {
+      if (err instanceof Cube.SolveTimeout) break;
+      throw err;
+    }
+    if (next === null) break; // two-phase finds nothing shorter
+    best = toList(next);
+  }
+  return done(best, best.length <= short.provenDepth + 1);
 }
+
+/** Moves of solveDetailed(state). */
+export const solve = (state, options) => solveDetailed(state, options).moves;
 
 /** Random solvable state in the given scheme (face → colour, default Western). */
 export const randomState = (scheme = WESTERN) => fromFaces(Cube.random().asString(), scheme);

@@ -660,8 +660,18 @@
     return Cube.computePruningTables();
   };
 
-  Cube.prototype.solveUpright = function(maxDepth = 22) {
-    var State, freeStates, moveNames, phase1, phase1search, phase2, phase2search, solution, state, x;
+  // PATCH (rubiks-cube): optional deadline (ms since epoch, Date.now()). The search throws Cube.SolveTimeout when it
+  // passes, and returns null instead of crashing when no solution of at most maxDepth moves is found.
+  Cube.SolveTimeout = class SolveTimeout extends Error {};
+
+  Cube.prototype.solveUpright = function(maxDepth = 22, deadline = 2e308) {
+    var State, freeStates, moveNames, phase1, phase1search, phase2, phase2search, solution, state, x, nodes, tick;
+    nodes = 0;
+    tick = function() {
+      if ((++nodes & 1023) === 0 && Date.now() > deadline) {
+        throw new Cube.SolveTimeout('solve timed out');
+      }
+    };
     // Names for all moves, i.e. U, U2, U', F, F2, ...
     moveNames = (function() {
       var face, faceName, m, o, power, powerName, result;
@@ -826,6 +836,7 @@
     };
     phase1 = function(state, depth) {
       var len, m, move, next, ref, ref1, results;
+      tick();
       if (depth === 0) {
         if (state.minDist1() === 0) {
           // Make sure we don't start phase 2 with a phase 2 move as the
@@ -870,6 +881,7 @@
     };
     phase2 = function(state, depth) {
       var len, m, move, next, ref, results;
+      tick();
       if (depth === 0) {
         if (state.minDist2() === 0) {
           return solution = state.solution();
@@ -904,6 +916,9 @@
     state = freeStates.pop().init(this);
     phase1search(state);
     freeStates.push(state);
+    if (solution === null) {
+      return null;
+    }
     // Trim the trailing space
     if (solution.length > 0) {
       solution = solution.substring(0, solution.length - 1);
@@ -929,13 +944,16 @@
     5: 'B'
   };
 
-  Cube.prototype.solve = function(maxDepth = 22) {
+  Cube.prototype.solve = function(maxDepth = 22, deadline = 2e308) {
     var clone, len, m, move, ref, rotation, solution, upright, uprightSolution;
     clone = this.clone();
     upright = clone.upright();
     clone.move(upright);
     rotation = new Cube().move(upright).center;
-    uprightSolution = clone.solveUpright(maxDepth);
+    uprightSolution = clone.solveUpright(maxDepth, deadline);
+    if (uprightSolution === null) {
+      return null;
+    }
     solution = [];
     ref = uprightSolution.split(' ');
     for (m = 0, len = ref.length; m < len; m++) {

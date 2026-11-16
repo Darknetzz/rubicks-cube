@@ -68,12 +68,16 @@ export function buildMcpServer(session) {
 
   server.registerTool('solve', {
     title: 'Solve',
-    description: 'Compute a near-optimal solution (≤22 moves, Kociemba) for the current state and store it as the plan.',
+    description:
+      'Compute a short solution for the current state and store it as the plan. Cubes a few moves from solved get ' +
+      'an exact optimal solution; otherwise Kociemba two-phase is repeated for shorter and shorter solutions within ' +
+      'a time budget (≤22 moves). The output says whether the move count is proven optimal.',
   }, async () => {
     try {
-      const moves = session.solve();
+      const { moves, optimal, ms } = session.solve();
       if (!moves.length) return text('Already solved.');
-      return text(`${moves.length} moves: ${moves.join(' ')}\n\n${report(session)}`);
+      const quality = optimal ? 'optimal' : `best found in ${ms} ms; a shorter one may exist`;
+      return text(`${moves.length} moves (${quality}): ${moves.join(' ')}\n\n${report(session)}`);
     } catch (err) {
       return fail(err.message);
     }

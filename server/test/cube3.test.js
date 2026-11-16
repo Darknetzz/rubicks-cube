@@ -69,16 +69,19 @@ test('centre checks: all 24 real orientations pass, wrong centres get one clear 
   assert.match(validate(swap(SOLVED, 4, 10)).join(), /top and right faces both have a red centre/);
 });
 
+// Correctness checks on many random cubes: a small time budget keeps them fast (length is tested in solver.test.js).
+const quick = (s) => solve(s, { budgetMs: 60, shortMs: 20 });
+
 test('solve returns short, correct solutions', () => {
   assert.deepEqual(solve(SOLVED), []);
   for (let i = 0; i < 30; i++) {
     const s = randomState();
-    const moves = solve(s);
+    const moves = quick(s);
     assert.ok(moves.length <= 22, `${moves.length} moves`);
     assert.ok(isSolved(applyMoves(s, moves)));
   }
   const rotated = applyMoves(SOLVED, "z F R U' B");
-  assert.ok(isSolved(applyMoves(rotated, solve(rotated))));
+  assert.ok(isSolved(applyMoves(rotated, quick(rotated))));
 });
 
 test('text helpers', () => {
@@ -108,12 +111,12 @@ test('Japanese scheme: solved state validates and solves in zero moves', () => {
 test('Japanese scheme: scrambled states solve correctly', () => {
   const scrambled = applyMoves(JP_SOLVED, "R U2 F' L D B2 R' U F2 D' L2 B");
   assert.deepEqual(validate(scrambled), []);
-  const moves = solve(scrambled);
+  const moves = quick(scrambled);
   assert.ok(moves.length > 0 && moves.length <= 22);
   assert.ok(isSolved(applyMoves(scrambled, moves)));
   for (let i = 0; i < 10; i++) {
     const s = applyMoves(randomState(JAPANESE), ['', 'z', "x'", 'y2'][i % 4]);
-    assert.ok(isSolved(applyMoves(s, solve(s))), s);
+    assert.ok(isSolved(applyMoves(s, quick(s))), s);
   }
 });
 

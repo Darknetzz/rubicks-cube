@@ -22,7 +22,7 @@ Server (`server/package.json`, pinned, installed with `npm ci` or by the Docker 
 |---|---|---|
 | [@modelcontextprotocol/sdk](https://www.npmjs.com/package/@modelcontextprotocol/sdk) | 1.32.2 | MCP Streamable HTTP endpoint |
 | [zod](https://www.npmjs.com/package/zod) | 4.6.7 | MCP tool input schemas |
-| [cubejs](https://github.com/ldez/cubejs) | 1.3.2, vendored in `server/vendor/cubejs` (MIT) | Kociemba two-phase solver. Vendored because its npm package needlessly depends on `npm@6`, which pulls in about 27 MB of packages with known CVEs. |
+| [cubejs](https://github.com/ldez/cubejs) | 1.3.2, vendored in `server/vendor/cubejs` (MIT) | Kociemba two-phase solver and its move/pruning tables (also used by the optimal short search). Vendored because its npm package needlessly depends on `npm@6`, which pulls in about 27 MB of packages with known CVEs. Patched to take a deadline (it has no timeout option); see `server/vendor/cubejs/PATCHES.md`. |
 | Docker image `node` | 26.13.1-alpine | Container runtime |
 
 Runtime requirements:
@@ -66,7 +66,11 @@ npm start              # npx serve .
 `server/` is a small Node service that serves the page and also:
 
 - shares one physical 3×3's state between the page (Paint → **Send to Claude**, then a live view over SSE) and Claude, which reaches it through an MCP endpoint
-- solves it with Kociemba's two-phase algorithm (≤22 moves; vendored [cubejs](https://github.com/ldez/cubejs), MIT)
+- solves it in as few moves as it can find within a time budget:
+  1. an IDA* search for an exact **optimal** solution (half-turn metric). It handles cubes up to about 10 moves from solved in milliseconds and stops after `SHORT_SEARCH_MS` (default 300).
+  2. If that runs out, Kociemba's two-phase algorithm (vendored [cubejs](https://github.com/ldez/cubejs), MIT, ≤22 moves), asked again for one move fewer each time it succeeds, until `SOLVE_BUDGET_MS` (default 2000) is used up.
+
+  The `solve` tool says either "optimal" or "best found in N ms". Set the budgets in `.env`. A solve blocks the server for at most the budget.
 
 Any colour scheme works (Western, Japanese with white opposite blue, or custom). The state is stored as sticker colours (`W Y R O G B`), and the six centre stickers decide which colour belongs to which face. Validation, the solver and every instruction Claude gets (how to hold the cube, the diagram, move explanations) are worked out from those centres. The page and MCP share one state store.
 
