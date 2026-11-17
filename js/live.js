@@ -45,3 +45,9 @@ export const postMoves = (moves, origin) => post('api/moves', { moves, origin })
 
 /** Undo the last recorded batch of moves (the page's or Claude's). */
 export const postUndo = (origin) => post('api/undo', { origin });
+
+/** Redo the last undone batch. */
+export const postRedo = (origin) => post('api/redo', { origin });
+
+/** Move along the plan to step `step` (forwards or backwards), keeping the plan. */
+export const postGoto = (step, origin) => post('api/goto', { step, origin });

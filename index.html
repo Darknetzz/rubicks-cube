@@ -37,7 +37,8 @@
     <nav id="toolbar">
       <button data-cmd="scramble">Scramble</button>
       <button data-cmd="solve">Solve</button>
-      <button data-cmd="undo">Undo</button>
+      <button data-cmd="undo" title="Undo (Ctrl+Z)">Undo</button>
+      <button data-cmd="redo" title="Redo (Ctrl+Y or Ctrl+Shift+Z)">Redo</button>
       <button data-cmd="reset">Reset</button>
       <button id="live-toggle" class="server-only" title="Mirror your physical cube and let Claude solve it">Real cube</button>
       <button id="toggle-panel">Settings</button>
@@ -45,6 +46,7 @@
 
     <div id="live-bar">
       <span id="live-status"></span>
+      <button id="plan-prev" type="button" hidden>◀ Back</button>
       <button id="plan-next" type="button" hidden></button>
       <button id="paint-toggle" type="button">Paint</button>
       <div id="palette"></div>
@@ -57,6 +59,8 @@
         <button id="remote-keep" type="button">Keep painting</button>
       </div>
     </div>
+
+    <div id="toast" role="status" aria-live="polite"></div>
 
     <aside id="panel">
       <section>
@@ -122,7 +126,8 @@
       <section>
         <h3>Mouse / touch</h3>
         <p class="hint">
-          Drag a sticker to turn its layer. Drag the background to orbit, scroll or pinch to zoom.
+          Drag a sticker to turn its layer. Drag the background to orbit, scroll or pinch to zoom. Click a move in
+          the history (or a step of Claude's plan) to go back or forward to it.
         </p>
       </section>
 

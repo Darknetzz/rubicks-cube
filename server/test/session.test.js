@@ -81,3 +81,57 @@ test('an unfinished painting is kept as a draft beside the state, turns with mov
   assert.equal(s.draft, null, 'a valid draft just becomes the state');
   assert.equal(s.state, applyMoves(SOLVED, 'R'));
 });
+
+test('redo replays undone batches with their plan, and a new move clears it', () => {
+  const s = planned("R U F'");
+  const plan = [...s.plan];
+  s.apply(plan[0]);
+  s.apply('L D'); // off plan
+  const off = s.state;
+  s.undo();
+  s.undo();
+  assert.equal(s.step, 0);
+  assert.ok(s.canRedo);
+  assert.deepEqual(s.redo('tab1'), [plan[0]]);
+  assert.equal(s.step, 1);
+  assert.deepEqual(s.redo(), ['L', 'D']);
+  assert.equal(s.state, off);
+  assert.equal(s.plan, null);
+  assert.equal(s.redo(), null);
+  s.undo();
+  assert.deepEqual(s.plan, plan);
+  s.apply('B');
+  assert.equal(s.snapshot().canRedo, false, 'a new move drops the redo stack');
+});
+
+test('goto steps back and forth along the plan, as one undoable batch', () => {
+  const s = planned("R U F' L2");
+  const plan = [...s.plan];
+  const events = [];
+  s.on('change', (e) => events.push(e));
+  assert.deepEqual(s.goto(3), plan.slice(0, 3));
+  assert.equal(s.step, 3);
+  assert.equal(s.state, applyMoves(applyMoves(SOLVED, "R U F' L2"), plan.slice(0, 3)));
+  assert.deepEqual(s.goto(1), invertMoves(plan.slice(1, 3)));
+  assert.equal(s.step, 1);
+  assert.deepEqual(events.at(-1).moves, invertMoves(plan.slice(1, 3)));
+  assert.deepEqual(s.goto(1), [], 'already there');
+  s.goto(plan.length);
+  assert.equal(s.snapshot().solved, true);
+  s.undo();
+  assert.equal(s.step, 1);
+  s.redo();
+  assert.equal(s.step, plan.length);
+  assert.throws(() => s.goto(plan.length + 1));
+  assert.throws(() => new Session(null).goto(0), /no plan/);
+});
+
+test('goto from halfway through a half-turn step takes the quarter back first', () => {
+  const s = planned('R2 U2');
+  s.apply("U'");
+  assert.deepEqual(s.goto(0), ['U']);
+  assert.equal(s.state, applyMoves(SOLVED, 'R2 U2'));
+  s.apply('U');
+  assert.deepEqual(s.goto(2), ["U'", 'U2', 'R2']);
+  assert.equal(s.snapshot().solved, true);
+});

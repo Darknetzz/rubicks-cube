@@ -25,6 +25,7 @@ export class Session extends EventEmitter {
     this.step = 0;
     this.planBase = null; // the state the plan starts from
     this.history = []; // undo stack: { moves, before: { state, plan, step, planBase } }
+    this.future = []; // redo stack: { moves, after: { state, plan, step, planBase } }
     this.draft = null; // { state, painted, at }: an unfinished painting the user sent; not the cube's state
     try {
       const saved = JSON.parse(readFileSync(file, 'utf8'));
@@ -33,6 +34,7 @@ export class Session extends EventEmitter {
         Object.assign(this, { state: saved.state, plan: saved.plan ?? null, step: saved.step ?? 0 });
         this.planBase = saved.planBase ?? (this.plan ? applyMoves(this.state, invertMoves(this.plan.slice(0, this.step))) : null);
         if (Array.isArray(saved.history)) this.history = saved.history.slice(-HISTORY);
+        if (Array.isArray(saved.future)) this.future = saved.future.slice(-HISTORY);
         if (saved.draft && DRAFT.test(saved.draft.state)) this.draft = saved.draft;
       }
     } catch {
@@ -48,6 +50,7 @@ export class Session extends EventEmitter {
       plan: this.plan,
       step: this.step,
       canUndo: this.history.length > 0,
+      canRedo: this.future.length > 0,
       hasDraft: !!this.draft,
       scheme: { centres: centreColours(state), opposites: schemeText(state) },
     };
@@ -57,8 +60,8 @@ export class Session extends EventEmitter {
     if (this.file) {
       try {
         mkdirSync(dirname(this.file), { recursive: true });
-        const { state, plan, step, planBase, history, draft } = this;
-        writeFileSync(`${this.file}.tmp`, JSON.stringify({ state, plan, step, planBase, history, draft }));
+        const { state, plan, step, planBase, history, future, draft } = this;
+        writeFileSync(`${this.file}.tmp`, JSON.stringify({ state, plan, step, planBase, history, future, draft }));
         renameSync(`${this.file}.tmp`, this.file);
       } catch (err) {
         console.error('could not save state:', err.message);
@@ -74,7 +77,7 @@ export class Session extends EventEmitter {
     const before = schemeText(this.state);
     const after = schemeText(state);
     // no undo across a new state; a complete cube replaces any unfinished one
-    Object.assign(this, { state, plan: null, step: 0, planBase: null, history: [], draft: null });
+    Object.assign(this, { state, plan: null, step: 0, planBase: null, history: [], future: [], draft: null });
     this.#commit({ type: 'state' });
     return before === after ? '' : `Colour scheme changed from (${before}) to (${after}).`;
   }
@@ -103,6 +106,7 @@ export class Session extends EventEmitter {
     this.plan = result.moves;
     this.step = 0;
     this.planBase = this.state;
+    this.future = []; // a redo would bring back a stale plan
     this.#commit({ type: 'plan' });
     return result;
   }
@@ -116,7 +120,7 @@ export class Session extends EventEmitter {
   apply(moves, origin = null) {
     const list = splitMoves(moves);
     if (!list.length) return !!this.plan;
-    const before = { state: this.state, plan: this.plan, step: this.step, planBase: this.planBase };
+    const before = this.#position();
     let followed = !!this.plan;
     let state = this.state;
     for (const m of list) {
@@ -128,24 +132,77 @@ export class Session extends EventEmitter {
     if (!followed) Object.assign(this, { plan: null, step: 0, planBase: null });
     this.state = state;
     this.#turnDraft(list); // the painting is of the same physical cube, so it turns too
-    this.history.push({ moves: list, before });
-    if (this.history.length > HISTORY) this.history.shift();
+    this.#record(list, before);
     this.#commit({ type: 'moves', moves: list, origin });
     return followed;
+  }
+
+  /**
+   * Move along the plan to step `to` (0 = before its first move, plan.length = all done), forwards or backwards,
+   * keeping the plan. Recorded as one batch, so undo/redo work on it. Returns the moves made.
+   */
+  goto(to, origin = null) {
+    if (!this.plan) throw new Error('There is no plan to step through.');
+    if (!Number.isInteger(to) || to < 0 || to > this.plan.length) throw new Error(`Step must be 0 to ${this.plan.length}.`);
+    const at = applyMoves(this.planBase, this.plan.slice(0, this.step));
+    const moves = [];
+    if (this.state !== at) {
+      // halfway through a half-turn step: take the quarter back first
+      const m = this.plan[this.step]?.replace(/2'?$/, '');
+      if (m && this.state === applyMoves(at, m)) moves.push(...invertMoves([m]));
+      else if (m && this.state === applyMoves(at, `${m}'`)) moves.push(m);
+      else throw new Error('The cube is not on the plan.');
+    }
+    if (to > this.step) moves.push(...this.plan.slice(this.step, to));
+    else moves.push(...invertMoves(this.plan.slice(to, this.step)));
+    if (!moves.length) return [];
+    const before = this.#position();
+    this.state = applyMoves(this.planBase, this.plan.slice(0, to));
+    this.step = to;
+    this.#turnDraft(moves);
+    this.#record(moves, before);
+    this.#commit({ type: 'moves', moves, origin });
+    return moves;
+  }
+
+  #record(moves, before) {
+    this.history.push({ moves, before });
+    if (this.history.length > HISTORY) this.history.shift();
+    this.future = [];
   }
 
   /** Undo the last recorded batch of moves (with the plan as it was). Returns the moves undone, or null. */
   undo(origin = null) {
     const last = this.history.pop();
     if (!last) return null;
+    this.future.push({ moves: last.moves, after: this.#position() });
     Object.assign(this, last.before);
     this.#turnDraft(invertMoves(last.moves));
     this.#commit({ type: 'moves', moves: invertMoves(last.moves), undo: true, origin });
     return last.moves;
   }
 
+  /** Redo the last undone batch (with the plan as it was after it). Returns the moves redone, or null. */
+  redo(origin = null) {
+    const next = this.future.pop();
+    if (!next) return null;
+    this.history.push({ moves: next.moves, before: this.#position() });
+    Object.assign(this, next.after);
+    this.#turnDraft(next.moves);
+    this.#commit({ type: 'moves', moves: next.moves, redo: true, origin });
+    return next.moves;
+  }
+
   get canUndo() {
     return this.history.length > 0;
+  }
+
+  get canRedo() {
+    return this.future.length > 0;
+  }
+
+  #position() {
+    return { state: this.state, plan: this.plan, step: this.step, planBase: this.planBase };
   }
 
   #turnDraft(moves) {

@@ -22,7 +22,9 @@ export const WESTERN = { U: 'W', R: 'R', F: 'G', D: 'Y', L: 'O', B: 'B' };
  * you, orange is on the right (equivalently: green facing you, red on the right).
  */
 export const JAPANESE = { U: 'W', R: 'R', F: 'G', D: 'B', L: 'O', B: 'Y' };
-export const KNOWN_SCHEMES = { Western: WESTERN, Japanese: JAPANESE };
+/** Japanese colours in mirror-image order, as some real cubes are made: with green facing you, orange on the right. */
+export const MIRRORED_JAPANESE = { ...JAPANESE, R: JAPANESE.L, L: JAPANESE.R };
+export const KNOWN_SCHEMES = { Western: WESTERN, Japanese: JAPANESE, 'mirrored Japanese': MIRRORED_JAPANESE };
 
 const VEC = { U: [0, 1, 0], D: [0, -1, 0], R: [1, 0, 0], L: [-1, 0, 0], F: [0, 0, 1], B: [0, 0, -1] };
 const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
@@ -32,17 +34,20 @@ const pairKey = (c) => [[c.U, c.D], [c.R, c.L], [c.F, c.B]].map((p) => p.sort().
 /**
  * How centres (face → colour) relate to a known scheme: { name, mirrored, right } when their opposite pairs match
  * one, where `right` is the colour that scheme has on the right with these top and front colours; null otherwise.
- * Not mirrored means the centres are a rotation of that scheme (same handedness).
+ * Not mirrored means the centres are a rotation of that scheme (same handedness). A scheme known in both
+ * handednesses (Japanese and mirrored Japanese) is never reported as mirrored: it is a real cube either way.
  */
 export function compareScheme(centres) {
+  let mirrored = null;
   for (const [name, ref] of Object.entries(KNOWN_SCHEMES)) {
     if (pairKey(centres) !== pairKey(ref)) continue;
     const faceOf = (colour) => Object.keys(ref).find((f) => ref[f] === colour);
     // In the reference, top × front = right (x = y × z). Map the state's top and front colours there.
     const right = ref[faceAt(cross(VEC[faceOf(centres.U)], VEC[faceOf(centres.F)]))];
-    return { name, mirrored: right !== centres.R, right };
+    if (right === centres.R) return { name, mirrored: false, right };
+    mirrored ??= { name, mirrored: true, right };
   }
-  return null;
+  return mirrored;
 }
 
 /** How to hold the cube for this state, named by its centre colours. */

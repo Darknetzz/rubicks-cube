@@ -78,3 +78,12 @@ test('old settings (a hex colour per face) migrate to the per-colour palette and
   assert.deepEqual(loadSettings().scheme, SCHEMES.japanese.scheme, 'the chosen preset is remembered');
   delete globalThis.localStorage;
 });
+
+test('a saved scheme equal to the old, non-mirrored "My cube" moves to the corrected one', async () => {
+  const store = new Map();
+  globalThis.localStorage = { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) };
+  const { loadSettings, SCHEMES } = await import('../js/settings.js');
+  store.set('rubiks-cube-settings-v1', JSON.stringify({ scheme: { U: 'W', R: 'O', F: 'Y', D: 'B', L: 'R', B: 'G' } }));
+  assert.deepEqual(loadSettings().scheme, SCHEMES['my-cube'].scheme);
+  delete globalThis.localStorage;
+});

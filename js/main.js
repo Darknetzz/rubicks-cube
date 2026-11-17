@@ -8,7 +8,7 @@ import {
   ACTIONS, FACE_KEYS, FACE_NAMES, MIN_SIZE, MAX_SIZE, SCHEMES, presetOf, faceColors, isScheme,
   loadSettings, saveSettings, defaultSettings, normalizeKey, keyLabel,
 } from './settings.js';
-import { serverAvailable, connect, postState, postDraft, postMoves, postUndo } from './live.js';
+import { serverAvailable, connect, postState, postDraft, postMoves, postUndo, postRedo, postGoto } from './live.js';
 import { validate, colourCounts, holding, COLOURS, COLOUR_NAMES } from './validate.js';
 import { parseState, encodeState, stateToJson, stateLink } from './statefile.js';
 import { applyMoves } from './facelets.js';
@@ -38,7 +38,7 @@ cube.onTurnDone = () => {
   if (!cube.busy) saveCube();
 };
 
-const state = { history: [], moves: 0, scrambled: false, running: false, t0: 0, t1: 0, prefix: '' };
+const state = { history: [], redo: [], moves: 0, scrambled: false, running: false, t0: 0, t1: 0, prefix: '' };
 // Real-cube mode: the page mirrors the server's cube (shared with Claude over MCP).
 const live = {
   on: false, disconnect: null, snap: null, painting: false, paintColour: 'W',
@@ -75,6 +75,7 @@ function paintAt(e) {
     s.userData.painted = true;
     savePaint();
     renderPaintCheck();
+    scheduleDraftSync();
   }
   return !!s;
 }
@@ -162,6 +163,7 @@ function fitCamera() {
 function userTurn(turn) {
   if (live.on) return sendLive(() => postMoves([formatTurn(turn, 3)]));
   pushMerged(state.history, turn);
+  state.redo = [];
   if (turn.layers.length !== cube.n) state.moves++; // whole-cube rotations are free
   if (state.scrambled && !state.running) {
     state.running = true;
@@ -188,6 +190,7 @@ function onTurnDone() {
 function scramble() {
   const seq = randomScramble(cube.n, settings.scrambleLength || autoScrambleLength(cube.n));
   for (const t of seq) pushMerged(state.history, t);
+  state.redo = [];
   cube.enqueue(seq, 0.4);
   Object.assign(state, { moves: 0, scrambled: true, running: false, t0: 0, t1: 0 });
   setMessage('Scrambled. The timer starts on your first move.');
@@ -201,6 +204,7 @@ function solve() {
   }
   const seq = state.history.reverse().map(inverse);
   state.history = [];
+  state.redo = [];
   const wasRunning = state.running;
   if (wasRunning) state.t1 = performance.now();
   Object.assign(state, { scrambled: false, running: false });
@@ -209,17 +213,34 @@ function solve() {
   updateHud();
 }
 
-function undo() {
-  const t = state.history.pop();
-  if (!t) return;
-  cube.enqueue(inverse(t));
+function undo(count = 1) {
+  const seq = [];
+  for (let i = 0; i < count && state.history.length; i++) {
+    const t = state.history.pop();
+    state.redo.push(t);
+    seq.push(inverse(t));
+  }
+  if (!seq.length) return;
+  cube.enqueue(seq, seq.length > 3 ? 0.5 : 1);
+  updateHud();
+}
+
+function redo(count = 1) {
+  const seq = [];
+  for (let i = 0; i < count && state.redo.length; i++) {
+    const t = state.redo.pop();
+    state.history.push(t);
+    seq.push(t);
+  }
+  if (!seq.length) return;
+  cube.enqueue(seq, seq.length > 3 ? 0.5 : 1);
   updateHud();
 }
 
 function reset() {
   const resized = cube.n !== settings.size;
   cube.build(settings.size);
-  Object.assign(state, { history: [], moves: 0, scrambled: false, running: false, t0: 0, t1: 0 });
+  Object.assign(state, { history: [], redo: [], moves: 0, scrambled: false, running: false, t0: 0, t1: 0 });
   if (resized) fitCamera();
   setMessage('');
   updateHud();
@@ -227,7 +248,7 @@ function reset() {
 }
 
 const commands = Object.fromEntries(
-  Object.entries({ scramble, solve, undo, reset }).map(([k, fn]) => [k, () => (live.on ? liveCommand(k) : fn())]),
+  Object.entries({ scramble, solve, undo, redo, reset }).map(([k, fn]) => [k, () => (live.on ? liveCommand(k) : fn())]),
 );
 
 // In real-cube mode moves done on the page are recorded on the server, in order, like Claude's apply_moves; the
@@ -241,6 +262,7 @@ function sendLive(request) {
 
 function liveCommand(name) {
   if (name === 'undo') sendLive(() => postUndo());
+  if (name === 'redo') sendLive(() => postRedo());
 }
 
 // ---------- real-cube mode ----------
@@ -371,8 +393,12 @@ function renderPlan() {
   snap.plan.forEach((m, i) => {
     const span = document.createElement('span');
     span.textContent = m;
-    span.title = hintText(m);
     span.className = i < snap.step ? 'done' : i === snap.step ? 'current' : '';
+    // Clicking a step goes to it: a done step becomes the next one again, a later one is jumped to, and the
+    // current one is marked done (like the Done button).
+    const to = i === snap.step ? i + 1 : i;
+    span.title = `${hintText(m)}. Click: ${i < snap.step ? 'go back to this move' : i === snap.step ? 'mark as done' : 'skip ahead to this move'}`;
+    span.addEventListener('click', () => sendLive(() => postGoto(to)));
     el.append(span);
   });
   const next = currentMove();
@@ -385,9 +411,11 @@ function renderLiveButtons() {
   done.hidden = !next || live.painting;
   done.textContent = next ? `Done: ${next}` : '';
   done.title = next ? `Record that you did ${next} on your cube (${hintText(next)})` : '';
-  const undoBtn = document.querySelector('[data-cmd="undo"]');
-  undoBtn.disabled = live.on && !live.snap?.canUndo;
-  undoBtn.title = live.on ? 'Undo the last recorded move(s), yours or Claude\'s' : '';
+  const snap = live.on && live.snap;
+  const back = $('plan-prev');
+  back.hidden = !snap?.plan || !snap.step || live.painting;
+  back.title = back.hidden ? '' : `Go back one step: undo ${snap.plan[snap.step - 1]} on your cube`;
+  renderUndoButtons();
 }
 
 function setLive(on) {
@@ -496,6 +524,10 @@ function renderPalette() {
 }
 
 $('live-toggle').addEventListener('click', () => setLive(!live.on));
+$('plan-prev').addEventListener('click', () => {
+  const snap = live.snap;
+  if (snap?.plan && snap.step > 0) sendLive(() => postGoto(snap.step - 1));
+});
 $('plan-next').addEventListener('click', () => {
   const next = currentMove();
   if (next) sendLive(() => postMoves([next]));
@@ -511,6 +543,50 @@ $('remote-discard').addEventListener('click', () => {
   setPainting(false); // shows the server's state
 });
 $('remote-keep').addEventListener('click', () => showConflict(false));
+
+// Once an unfinished painting has gone to Claude, later strokes follow it automatically (debounced), so Claude
+// always sees what the page shows. A painting that becomes a valid cube is not auto-sent: Send commits it.
+const draftSync = { timer: 0, busy: false, again: false, warnedComplete: false };
+function scheduleDraftSync() {
+  if (!live.draftSent) return;
+  clearTimeout(draftSync.timer);
+  draftSync.timer = setTimeout(syncDraft, 700);
+}
+async function syncDraft() {
+  if (draftSync.busy) return void (draftSync.again = true);
+  const facelets = live.painting && live.draftSent && !live.conflict && liveFacelets();
+  if (!facelets || facelets === live.draftSent) return;
+  if (!validate(facelets).length) {
+    if (!draftSync.warnedComplete) toast('Looks complete. Press Send to Claude to use it.', 'info');
+    draftSync.warnedComplete = true;
+    return;
+  }
+  draftSync.warnedComplete = false;
+  draftSync.busy = true;
+  try {
+    await postDraft(facelets, cube.paintedMask());
+    if (live.draftSent) live.draftSent = facelets; // still a draft (not closed or replaced meanwhile)
+    savePaint();
+    toast('In sync with Claude', 'ok');
+  } catch (err) {
+    toast(`Couldn't sync: ${err.message}`, 'error');
+  } finally {
+    draftSync.busy = false;
+    if (draftSync.again) {
+      draftSync.again = false;
+      syncDraft();
+    }
+  }
+}
+
+let toastTimer = 0;
+function toast(text, kind = 'ok') {
+  const el = $('toast');
+  el.textContent = kind === 'ok' ? `✓ ${text}` : text;
+  el.className = `show ${kind}`;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => (el.className = kind), 2200);
+}
 $('send').addEventListener('click', async () => {
   const facelets = liveFacelets();
   const painted = cube.paintedMask();
@@ -520,7 +596,8 @@ $('send').addEventListener('click', async () => {
       await postDraft(facelets, painted);
       live.draftSent = facelets;
       savePaint(); // Paint stays open: the painting is still the user's until Claude sends a complete cube
-      setMessage('Sent as unfinished. Ask Claude to help you fill in the rest; this page updates when it does.', 'win');
+      setMessage('Sent as unfinished. Keep painting: changes sync to Claude automatically. Ask Claude to help fill in the rest.', 'win');
+      toast('In sync with Claude', 'ok');
     } catch (err) {
       setMessage(err.message, 'error');
     }
@@ -555,9 +632,43 @@ function setMessage(text, kind = '') {
 
 function updateHud() {
   $('moves').textContent = `Moves: ${state.moves}`;
+  // Done moves, then undone ones (faded) that Redo would bring back. Clicking one goes back or forward to just after it.
+  const el = $('history');
+  el.replaceChildren();
+  if (live.on) return renderUndoButtons();
   const h = state.history;
-  const tail = h.slice(-16).map((t) => formatTurn(t, cube.n)).join(' ');
-  $('history').textContent = h.length > 16 ? `… ${tail}` : tail;
+  const r = [...state.redo].reverse(); // next to redo first
+  const MAX = 16;
+  const shownRedo = r.slice(0, Math.min(r.length, 6));
+  const shownDone = h.slice(-(MAX - shownRedo.length));
+  if (shownDone.length < h.length) el.append('…');
+  shownDone.forEach((t, k) => {
+    const i = h.length - shownDone.length + k;
+    const span = document.createElement('span');
+    span.textContent = formatTurn(t, cube.n);
+    span.title = i === h.length - 1 ? 'Last move. Click to undo it' : 'Click to go back to just after this move';
+    span.addEventListener('click', () => (i === h.length - 1 ? undo() : undo(h.length - 1 - i)));
+    el.append(span);
+  });
+  shownRedo.forEach((t, k) => {
+    const span = document.createElement('span');
+    span.className = 'redo';
+    span.textContent = formatTurn(t, cube.n);
+    span.title = 'Undone. Click to redo up to this move';
+    span.addEventListener('click', () => redo(k + 1));
+    el.append(span);
+  });
+  if (shownRedo.length < r.length) el.append('…');
+  renderUndoButtons();
+}
+
+function renderUndoButtons() {
+  const undoBtn = document.querySelector('[data-cmd="undo"]');
+  const redoBtn = document.querySelector('[data-cmd="redo"]');
+  undoBtn.disabled = live.on ? !live.snap?.canUndo : !state.history.length;
+  redoBtn.disabled = live.on ? !live.snap?.canRedo : !state.redo.length;
+  undoBtn.title = live.on ? "Undo the last recorded move(s), yours or Claude's (Ctrl+Z)" : 'Undo (Ctrl+Z)';
+  redoBtn.title = live.on ? 'Redo what was undone (Ctrl+Y)' : 'Redo (Ctrl+Y or Ctrl+Shift+Z)';
 }
 
 function setPrefix(p) {
@@ -582,8 +693,17 @@ addEventListener('keydown', (e) => {
     renderKeys();
     return;
   }
-  if (e.ctrlKey || e.metaKey || e.altKey) return;
   if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
+  if ((e.ctrlKey || e.metaKey) && !e.altKey) {
+    const k = e.key.toLowerCase();
+    const cmd = k === 'z' ? (e.shiftKey ? 'redo' : 'undo') : k === 'y' ? 'redo' : null;
+    if (cmd) {
+      e.preventDefault();
+      commands[cmd]();
+    }
+    return;
+  }
+  if (e.altKey) return;
 
   const k = normalizeKey(e.key);
   const action = ACTIONS.find((a) => settings.keys[a.id] === k);
@@ -863,7 +983,7 @@ function importState(text) {
   settings.size = size;
   save();
   cube.setFacelets(facelets, size);
-  Object.assign(state, { history: [], moves: 0, running: false, t0: 0, t1: 0, scrambled: !cube.isSolved() });
+  Object.assign(state, { history: [], redo: [], moves: 0, running: false, t0: 0, t1: 0, scrambled: !cube.isSolved() });
   if (resized) fitCamera();
   syncInputs();
   updateHud();
@@ -944,6 +1064,7 @@ function restoreCube(saved) {
   const now = performance.now();
   Object.assign(state, {
     history,
+    redo: [],
     moves: Number(saved.moves) || 0,
     scrambled: !!saved.scrambled,
     running: !!saved.running,

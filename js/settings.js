@@ -1,5 +1,8 @@
 import { WESTERN, JAPANESE } from './validate.js';
 
+// "My cube" before 2026-11-16 had orange on the right; the owner's cube is actually mirrored Japanese.
+const OLD_MY_CUBE = { U: 'W', R: 'O', F: 'Y', D: 'B', L: 'R', B: 'G' };
+
 const STORAGE_KEY = 'rubiks-cube-settings-v1';
 
 export const MIN_SIZE = 2;
@@ -13,8 +16,8 @@ export const FACE_NAMES = { U: 'Up', D: 'Down', F: 'Front', B: 'Back', L: 'Left'
 export const COLOUR_LETTERS = 'WYROGB';
 export const DEFAULT_SCHEME = 'my-cube';
 export const SCHEMES = {
-  // The site owner's cube (Japanese scheme), held white on top with yellow facing you: orange right, red left.
-  'my-cube': { label: 'My cube: white top, yellow front', scheme: { U: 'W', R: 'O', F: 'Y', D: 'B', L: 'R', B: 'G' } },
+  // The site owner's cube (mirrored Japanese scheme), held white on top with yellow facing you: red right, orange left.
+  'my-cube': { label: 'My cube (mirrored Japanese): white top, yellow front', scheme: { U: 'W', R: 'R', F: 'Y', D: 'B', L: 'O', B: 'G' } },
   western: { label: 'Western / American, white top', scheme: { ...WESTERN } },
   'western-yellow': { label: 'Western / American, yellow top', scheme: { U: 'Y', R: 'O', F: 'G', D: 'W', L: 'R', B: 'B' } },
   japanese: { label: 'Japanese, white top, green front', scheme: { ...JAPANESE } },
@@ -38,6 +41,7 @@ export const ACTIONS = [
   ...['Rw', 'Lw', 'Uw', 'Dw', 'Fw', 'Bw'].map((id) => move(id, true)),
   ...['M', 'E', 'S', 'x', 'y', 'z'].map((id) => move(id)),
   { id: 'undo', label: 'Undo', kind: 'cmd' },
+  { id: 'redo', label: 'Redo', kind: 'cmd' },
   { id: 'scramble', label: 'Scramble', kind: 'cmd' },
   { id: 'solve', label: 'Solve', kind: 'cmd' },
   { id: 'reset', label: 'Reset', kind: 'cmd' },
@@ -62,6 +66,8 @@ export function defaultSettings() {
   };
 }
 
+const sameScheme = (a, b) => [...'URFDLB'].every((f) => a[f] === b[f]);
+
 export function loadSettings() {
   const d = defaultSettings();
   try {
@@ -71,7 +77,7 @@ export function loadSettings() {
     const merged = {
       ...d, ...s,
       // settings from before schemes existed were drawn in the Western scheme; keep their cube looking the same
-      scheme: isScheme(s.scheme) ? { ...s.scheme } : oldPalette ? { ...WESTERN } : d.scheme,
+      scheme: isScheme(s.scheme) && !sameScheme(s.scheme, OLD_MY_CUBE) ? { ...s.scheme } : oldPalette ? { ...WESTERN } : d.scheme,
       palette: { ...d.palette, ...oldPalette, ...s.palette },
       keys: { ...d.keys, ...s.keys },
     };
