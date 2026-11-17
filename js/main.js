@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { TrackballControls } from 'three/addons/controls/TrackballControls.js';
 import { Cube } from './cube.js';
 import {
   parseMove, parseSequence, formatTurn, inverse, pushMerged, randomScramble, autoScrambleLength,
@@ -60,7 +60,7 @@ const liveFacelets = () => {
 };
 const showLive = (colours) => cube.setFacelets([...colours].map(keyOf).join(''));
 
-// ---------- mouse / touch turning (registered before OrbitControls so it can veto orbiting) ----------
+// ---------- mouse / touch turning (registered before the camera controls so it can veto them) ----------
 const raycaster = new THREE.Raycaster();
 let drag = null;
 let hoverNdc = null; // mouse position over the canvas (no hover on touch)
@@ -94,7 +94,7 @@ canvas.addEventListener('pointerdown', (e) => {
   }
   raycaster.setFromCamera(ndc(e), camera);
   const hit = cube.pick(raycaster);
-  if (!hit) return; // background: nothing on a mouse; on touch OrbitControls orbits
+  if (!hit) return; // background: nothing on a mouse; on touch the camera controls rotate the view
   controls.enabled = false;
   drag = { ...hit, x: e.clientX, y: e.clientY, id: e.pointerId, done: false };
   canvas.setPointerCapture(e.pointerId);
@@ -170,16 +170,19 @@ function dragToTurn({ cubie, point, normal }, dx, dy) {
   };
 }
 
-const controls = new OrbitControls(camera, canvas);
-controls.enablePan = false;
-// Left mouse only turns layers; the view orbits with the right or middle button (touch: one finger on the background).
+// Trackball, not orbit: no pole clamp, so the view can tumble all the way over the top and bottom.
+const controls = new TrackballControls(camera, canvas);
+controls.noPan = true;
+controls.rotateSpeed = 3;
+controls.keys = []; // its A/S/D modifier keys would clash with the move shortcuts
+// Left mouse only turns layers; the view rotates with the right or middle button (touch: one finger on the background).
 controls.mouseButtons = { LEFT: null, MIDDLE: THREE.MOUSE.ROTATE, RIGHT: THREE.MOUSE.ROTATE };
 canvas.addEventListener('mousedown', (e) => e.button === 1 && e.preventDefault()); // no autoscroll on middle-drag
-controls.enableDamping = true;
 
 function fitCamera() {
   const n = cube.n;
   camera.position.set(0.9, 0.85, 1.35).normalize().multiplyScalar(3.2 * n + 1.5);
+  camera.up.set(0, 1, 0);
   controls.target.set(0, 0, 0);
   controls.minDistance = n * 1.5;
   controls.maxDistance = n * 8 + 10;
@@ -957,6 +960,7 @@ function resize() {
   renderer.setSize(w, h, false);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
+  controls.handleResize();
 }
 new ResizeObserver(resize).observe(canvas);
 

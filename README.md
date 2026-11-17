@@ -11,7 +11,7 @@ The page has nothing to install: the root `package.json` has no dependencies and
 | Dependency | Version | Used for | Loaded from |
 |---|---|---|---|
 | [Three.js](https://threejs.org/) | 0.187.0 (pinned) | Rendering (`js/cube.js`, `js/main.js`) | jsDelivr CDN via the import map in `index.html` |
-| Three.js addon `OrbitControls` | 0.187.0 | Camera orbit (`js/main.js`) | `three/addons/controls/OrbitControls.js` |
+| Three.js addon `TrackballControls` | 0.187.0 | Free camera rotation (`js/main.js`) | `three/addons/controls/TrackballControls.js` |
 | Three.js addon `RoundedBoxGeometry` | 0.187.0 | Rounded cubies (`js/cube.js`) | `three/addons/geometries/RoundedBoxGeometry.js` |
 
 To upgrade Three.js, change the version in both import map entries in `index.html`.
