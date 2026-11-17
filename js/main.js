@@ -14,6 +14,7 @@ import { parseState, encodeState, stateToJson, stateLink } from './statefile.js'
 import { applyMoves } from './facelets.js';
 import { hintText } from './hints.js';
 import { MoveArrow } from './arrow.js';
+import { LayerHighlight } from './highlight.js';
 
 const $ = (id) => document.getElementById(id);
 const settings = loadSettings();
@@ -32,6 +33,7 @@ camera.add(keyLight); // light follows the view so every face stays readable
 
 const cube = new Cube(scene, { ...settings, colors: faceColors(settings) });
 const arrow = new MoveArrow(scene);
+const highlight = new LayerHighlight(scene);
 cube.speed = settings.speed;
 cube.onTurnDone = () => {
   onTurnDone();
@@ -61,6 +63,7 @@ const showLive = (colours) => cube.setFacelets([...colours].map(keyOf).join(''))
 // ---------- mouse / touch turning (registered before OrbitControls so it can veto orbiting) ----------
 const raycaster = new THREE.Raycaster();
 let drag = null;
+let hoverNdc = null; // mouse position over the canvas (no hover on touch)
 
 function ndc(e) {
   const r = canvas.getBoundingClientRect();
@@ -98,10 +101,13 @@ canvas.addEventListener('pointerdown', (e) => {
 });
 
 canvas.addEventListener('pointermove', (e) => {
+  hoverNdc = e.pointerType === 'mouse' ? ndc(e) : null;
   if (drag?.paint && e.pointerId === drag.id) return void paintAt(e);
   if (!drag || drag.done || e.pointerId !== drag.id) return;
   const dx = e.clientX - drag.x;
   const dy = e.clientY - drag.y;
+  if (dx * dx + dy * dy < 9) return;
+  drag.pred = dragToTurn(drag, dx, dy); // highlight the layer this drag is heading for
   if (dx * dx + dy * dy < 100) return;
   drag.done = true;
   const turn = dragToTurn(drag, dx, dy);
@@ -116,6 +122,25 @@ const endDrag = (e) => {
 };
 canvas.addEventListener('pointerup', endDrag);
 canvas.addEventListener('pointercancel', endDrag);
+canvas.addEventListener('pointerleave', () => (hoverNdc = null));
+
+// The two layers a drag on this piece could turn: one per face tangent axis.
+const candidateLayers = ({ cubie, normal }) =>
+  [0, 1, 2].filter((a) => normal.getComponent(a) === 0)
+    .map((axis) => ({ axis, layer: Math.round(cubie.position.getComponent(axis) + cube.off) }));
+
+function updateHighlight() {
+  if (cube.busy || live.painting) return highlight.hide();
+  if (drag) {
+    if (drag.paint || drag.done) return highlight.hide();
+    const p = drag.pred;
+    return highlight.show(p ? [{ axis: p.axis, layer: p.layers[0] }] : candidateLayers(drag), cube.n);
+  }
+  if (!hoverNdc) return highlight.hide();
+  raycaster.setFromCamera(hoverNdc, camera);
+  const hit = cube.pick(raycaster);
+  highlight.show(hit && candidateLayers(hit), cube.n);
+}
 
 // Pick the face tangent whose on-screen direction best matches the drag; rotate about normal × tangent.
 function dragToTurn({ cubie, point, normal }, dx, dy) {
@@ -936,6 +961,7 @@ renderer.setAnimationLoop((now) => {
   cube.update(now);
   controls.update();
   arrow.update(camera);
+  updateHighlight();
   const ms = state.running ? performance.now() - state.t0 : state.t1 - state.t0;
   $('timer').textContent = fmtTime(Math.max(0, ms));
   renderer.render(scene, camera);
