@@ -24,6 +24,7 @@ export class Session extends EventEmitter {
     this.plan = null;
     this.step = 0;
     this.planBase = null; // the state the plan starts from
+    this.labels = null; // optional short label per plan step (Claude's own steps), or null
     this.history = []; // undo stack: { moves, before: { state, plan, step, planBase } }
     this.future = []; // redo stack: { moves, after: { state, plan, step, planBase } }
     this.draft = null; // { state, painted, at }: an unfinished painting the user sent; not the cube's state
@@ -31,7 +32,7 @@ export class Session extends EventEmitter {
       const saved = JSON.parse(readFileSync(file, 'utf8'));
       saved.state = migrate(saved.state);
       if (validate(saved.state).length === 0) {
-        Object.assign(this, { state: saved.state, plan: saved.plan ?? null, step: saved.step ?? 0 });
+        Object.assign(this, { state: saved.state, plan: saved.plan ?? null, step: saved.step ?? 0, labels: saved.labels ?? null });
         this.planBase = saved.planBase ?? (this.plan ? applyMoves(this.state, invertMoves(this.plan.slice(0, this.step))) : null);
         if (Array.isArray(saved.history)) this.history = saved.history.slice(-HISTORY);
         if (Array.isArray(saved.future)) this.future = saved.future.slice(-HISTORY);
@@ -48,6 +49,7 @@ export class Session extends EventEmitter {
       state,
       solved: isSolved(state),
       plan: this.plan,
+      labels: this.labels,
       step: this.step,
       canUndo: this.history.length > 0,
       canRedo: this.future.length > 0,
@@ -60,8 +62,8 @@ export class Session extends EventEmitter {
     if (this.file) {
       try {
         mkdirSync(dirname(this.file), { recursive: true });
-        const { state, plan, step, planBase, history, future, draft } = this;
-        writeFileSync(`${this.file}.tmp`, JSON.stringify({ state, plan, step, planBase, history, future, draft }));
+        const { state, plan, step, planBase, labels, history, future, draft } = this;
+        writeFileSync(`${this.file}.tmp`, JSON.stringify({ state, plan, step, planBase, labels, history, future, draft }));
         renameSync(`${this.file}.tmp`, this.file);
       } catch (err) {
         console.error('could not save state:', err.message);
@@ -77,7 +79,7 @@ export class Session extends EventEmitter {
     const before = schemeText(this.state);
     const after = schemeText(state);
     // no undo across a new state; a complete cube replaces any unfinished one
-    Object.assign(this, { state, plan: null, step: 0, planBase: null, history: [], future: [], draft: null });
+    Object.assign(this, { state, plan: null, step: 0, planBase: null, labels: null, history: [], future: [], draft: null });
     this.#commit({ type: 'state' });
     return before === after ? '' : `Colour scheme changed from (${before}) to (${after}).`;
   }
@@ -106,9 +108,36 @@ export class Session extends EventEmitter {
     this.plan = result.moves;
     this.step = 0;
     this.planBase = this.state;
+    this.labels = null;
     this.future = []; // a redo would bring back a stale plan
     this.#commit({ type: 'plan' });
     return result;
+  }
+
+  /**
+   * Set the plan's steps by hand: Claude's own steps (an algorithm, a stage of a method, a fix), not necessarily a
+   * solution. `steps` is [{ move, label? }], one move each. The steps already done are kept and `steps` replaces the
+   * rest, or is added after them with `append`. Without a plan, or while halfway through a half-turn step, the plan
+   * starts afresh from the current state. No steps (and no `append`) drops the remaining ones; with nothing done
+   * either, the plan is cleared. Nothing is turned.
+   */
+  setPlan(steps, { append = false } = {}) {
+    const added = steps.map(({ move, label }, i) => {
+      const list = splitMoves(move ?? '');
+      if (list.length !== 1) throw new Error(`Step ${i + 1} must be exactly one move, not "${move}".`);
+      return { move: list[0], label: label?.trim() || null };
+    });
+    const onPlan = this.plan && this.state === applyMoves(this.planBase, this.plan.slice(0, this.step));
+    if (!onPlan) Object.assign(this, { plan: [], step: 0, planBase: this.state, labels: null });
+    const old = this.plan.map((move, i) => ({ move, label: this.labels?.[i] ?? null }));
+    const all = [...(append ? old : old.slice(0, this.step)), ...added];
+    if (!all.length) Object.assign(this, { plan: null, step: 0, planBase: null, labels: null });
+    else {
+      this.plan = all.map((s) => s.move);
+      this.labels = all.some((s) => s.label) ? all.map((s) => s.label) : null;
+    }
+    this.future = []; // a redo would bring back a different plan
+    this.#commit({ type: 'plan' });
   }
 
   /**
@@ -129,7 +158,7 @@ export class Session extends EventEmitter {
       if (this.step < this.plan.length && state === applyMoves(this.planBase, this.plan.slice(0, this.step + 1))) this.step++;
       else if (!this.#halfwayThroughStep(state)) followed = false;
     }
-    if (!followed) Object.assign(this, { plan: null, step: 0, planBase: null });
+    if (!followed) Object.assign(this, { plan: null, step: 0, planBase: null, labels: null });
     this.state = state;
     this.#turnDraft(list); // the painting is of the same physical cube, so it turns too
     this.#record(list, before);
@@ -176,7 +205,7 @@ export class Session extends EventEmitter {
     const last = this.history.pop();
     if (!last) return null;
     this.future.push({ moves: last.moves, after: this.#position() });
-    Object.assign(this, last.before);
+    Object.assign(this, { labels: null, ...last.before });
     this.#turnDraft(invertMoves(last.moves));
     this.#commit({ type: 'moves', moves: invertMoves(last.moves), undo: true, origin });
     return last.moves;
@@ -187,7 +216,7 @@ export class Session extends EventEmitter {
     const next = this.future.pop();
     if (!next) return null;
     this.history.push({ moves: next.moves, before: this.#position() });
-    Object.assign(this, next.after);
+    Object.assign(this, { labels: null, ...next.after });
     this.#turnDraft(next.moves);
     this.#commit({ type: 'moves', moves: next.moves, redo: true, origin });
     return next.moves;
@@ -202,7 +231,7 @@ export class Session extends EventEmitter {
   }
 
   #position() {
-    return { state: this.state, plan: this.plan, step: this.step, planBase: this.planBase };
+    return { state: this.state, plan: this.plan, step: this.step, planBase: this.planBase, labels: this.labels };
   }
 
   #turnDraft(moves) {

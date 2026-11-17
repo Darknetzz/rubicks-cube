@@ -179,6 +179,7 @@ button.active { border-color: var(--accent); color: var(--accent); }
 #history .redo { opacity: 0.4; text-decoration: line-through; }
 #plan .done { color: var(--muted); text-decoration: line-through; }
 #plan .current { color: var(--accent); font-weight: 700; }
+#plan span[data-label]::before { content: attr(data-label); display: inline-block; margin-right: 6px; font-family: system-ui, sans-serif; font-size: 12px; font-weight: 400; color: var(--muted); }
 #plan-hint { margin-top: 4px; font-size: 15px; color: var(--accent); }
 #plan-hint:empty { display: none; }
 #hold { margin-top: 6px; font-size: 13px; color: var(--muted); }

@@ -79,11 +79,12 @@ Any colour scheme works (Western, Japanese with white opposite blue, or custom).
 - **Live while painting:** moves Claude applies animate on the painted cube too, so your edits turn with their layers. Only a full replacement (`set_cube`, `reset_cube`) asks before discarding edits.
 - **Moves and undo on the page:** in real-cube mode, turns you make on the page (drag, keyboard, Apply moves) are recorded as moves on your real cube, exactly like Claude's `apply_moves`. **Done: R2** records the plan's current step in one tap. **Undo** reverts the last recorded move or batch, yours or Claude's, together with the plan as it was. The plan follows the cube's state, so a half turn done as two quarter turns still counts. Setting a new state (Send, `set_cube`, `reset_cube`) starts a fresh undo history.
 - **Next move:** while there is a plan, an arrow on the 3D cube shows the current step. Quarter turns get one head, half turns two heads and a ×2 label. When the turning face is hidden (back, bottom, left), the arrow is drawn on a visible neighbouring face instead, showing which way that layer's stickers move.
+- **Claude's own steps:** `set_plan` stores a custom list of moves as the plan instead of the solver's (an algorithm, one stage of a method, a fix), each with an optional label such as "F2L pair 1". The page shows them exactly like a solve (arrow, hint, Done), with each label before its group of steps, and `apply_moves` advances them the same way. Steps already done are kept; new steps replace the rest, or with `append` are added after them, so a solve can be fed in one stage at a time.
 - **Hold:** in real-cube mode the page shows the same "Hold:" line Claude gets. The page draws the cube that way round: top on top, the face you hold towards you at the front, right on the right.
 - **Mirrored centres are rejected where no such cube exists:** a mirror image of the Western scheme gets a clear message, e.g. "orange and red look swapped: is the cube mirrored?". Japanese and mirrored Japanese are both real cubes, so both are accepted.
 - **Plain-language hints** for every plan move, on the page and in the MCP output, relative to how you hold the cube (e.g. `U` = "top row facing you moves left", `B` = "top of the back layer moves to your left"). Tests check each hint and arrow against the cube model.
 
-MCP tools: `get_cube`, `set_cube`, `solve`, `apply_moves`, `reset_cube`. The endpoint is `/mcp` and requires an `Authorization: Bearer <MCP_TOKEN>` header.
+MCP tools: `get_cube`, `set_cube`, `solve`, `set_plan`, `apply_moves`, `reset_cube`. The endpoint is `/mcp` and requires an `Authorization: Bearer <MCP_TOKEN>` header.
 
 ```sh
 echo "MCP_TOKEN=$(openssl rand -hex 32)" > .env

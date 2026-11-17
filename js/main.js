@@ -403,7 +403,7 @@ function showConflict(on) {
 /** The plan's current move, or null when there is nothing to show. */
 function currentMove() {
   const snap = live.on && live.snap;
-  return snap?.plan && !snap.solved && snap.step < snap.plan.length ? snap.plan[snap.step] : null;
+  return snap?.plan && snap.step < snap.plan.length ? snap.plan[snap.step] : null;
 }
 
 function updateArrow() {
@@ -428,12 +428,15 @@ function renderPlan() {
     // Clicking a step goes to it: a done step becomes the next one again, a later one is jumped to, and the
     // current one is marked done (like the Done button).
     const to = i === snap.step ? i + 1 : i;
-    span.title = `${hintText(m)}. Click: ${i < snap.step ? 'go back to this move' : i === snap.step ? 'mark as done' : 'skip ahead to this move'}`;
+    const label = snap.labels?.[i];
+    if (label && (i === 0 || snap.labels[i - 1] !== label)) span.dataset.label = label;
+    span.title = `${label ? `${label}: ` : ''}${hintText(m)}. Click: ${i < snap.step ? 'go back to this move' : i === snap.step ? 'mark as done' : 'skip ahead to this move'}`;
     span.addEventListener('click', () => sendLive(() => postGoto(to)));
     el.append(span);
   });
   const next = currentMove();
-  if (next) hint.textContent = `→ ${next}: ${hintText(next)}`;
+  const label = snap.labels?.[snap.step];
+  if (next) hint.textContent = `${label ? `${label} · ` : ''}→ ${next}: ${hintText(next)}`;
 }
 
 function renderLiveButtons() {

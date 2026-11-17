@@ -13,6 +13,7 @@ Workflow:
    so always name faces by their centre colour as get_cube reports it, never by a colour you assume.
 2. Before giving moves, tell the user exactly how to hold the cube (the "hold" line) and to keep it that way.
 3. Call solve. Give the moves 2-4 at a time, explaining each in plain words (the descriptions are provided).
+   To show your own steps instead (an algorithm, a few hints, a fix), call set_plan: the page shows each as an arrow.
 4. After the user confirms they did a batch, call apply_moves with exactly those moves so the web page animates
    and progress is tracked. Ask them to compare their cube with the page if anything looks off.
 5. If the user made a mistake, have them describe/paint the cube again and re-solve.`;
@@ -40,7 +41,7 @@ function draftReport(draft) {
 }
 
 function report(session, note = '') {
-  const { state, plan, step } = session.snapshot();
+  const { state, plan, step, labels } = session.snapshot();
   const lines = [
     ...(note ? [note, ''] : []),
     ...(session.draft ? [draftReport(session.draft), '', '--- Current cube state ---', ''] : []),
@@ -54,7 +55,8 @@ function report(session, note = '') {
     lines.push('', `Plan: ${plan.length} moves, ${step} done.`);
     let s = state; // describe each remaining move against the cube as it will be when that move is made
     plan.forEach((m, i) => {
-      lines.push(`${i < step ? '✓' : i === step ? '→' : ' '} ${i + 1}. ${describeMove(m, i < step ? state : s)}`);
+      const label = labels?.[i] ? ` [${labels[i]}]` : '';
+      lines.push(`${i < step ? '✓' : i === step ? '→' : ' '} ${i + 1}.${label} ${describeMove(m, i < step ? state : s)}`);
       if (i >= step) s = applyMoves(s, m);
     });
   }
@@ -102,6 +104,33 @@ export function buildMcpServer(session) {
       if (!moves.length) return text('Already solved.');
       const quality = optimal ? 'optimal' : `best found in ${ms} ms; a shorter one may exist`;
       return text(`${moves.length} moves (${quality}): ${moves.join(' ')}\n\n${report(session)}`);
+    } catch (err) {
+      return fail(err.message);
+    }
+  });
+
+  server.registerTool('set_plan', {
+    title: 'Set plan steps',
+    description:
+      'Store your own sequence of moves as the plan, instead of the solver output: an algorithm, one stage of a method ' +
+      '(cross, F2L pair, OLL, PLL), or a fix. The web page shows each step exactly like a solve: an arrow on the 3D ' +
+      'cube, a plain-language hint and a Done button, and apply_moves advances it the same way. Each step is one ' +
+      'move in standard notation as the user holds the cube (R, U\', F2, slices M E S, wide Rw or r, rotations x y ' +
+      'z) with an optional short label shown with it (e.g. "cross: red-blue edge", "F2L pair 1"). Steps already ' +
+      'done are kept; the given steps replace the remaining ones, or with append are added after them, so you can ' +
+      'feed a solve in one stage at a time. An empty list without append drops the remaining steps. Nothing is ' +
+      'turned: the user does the moves, then you record them with apply_moves. Returns the cube as get_cube does.',
+    inputSchema: {
+      steps: z.array(z.object({
+        move: z.string().min(1).describe('One move, e.g. R, U\', F2, M, Rw, x.'),
+        label: z.string().max(80).optional().describe('Short label shown with this step, e.g. "F2L pair 1".'),
+      })).describe('The steps in order.'),
+      append: z.boolean().optional().describe('Add after all existing steps instead of replacing the remaining ones.'),
+    },
+  }, async ({ steps, append }) => {
+    try {
+      session.setPlan(steps, { append: !!append });
+      return text(report(session));
     } catch (err) {
       return fail(err.message);
     }

@@ -54,3 +54,43 @@ test('get_cube shows an unfinished painting with painted stickers in capitals an
   assert.doesNotMatch(textOf(await client.callTool({ name: 'get_cube', arguments: {} })), /UNFINISHED/);
   await close();
 });
+
+const steps = (str, label) => str.split(' ').map((move) => (label ? { move, label } : { move }));
+
+test('set_plan stores labelled steps that apply_moves advances like a solve', async () => {
+  const { client, session, close } = await connect();
+  const solved = session.state;
+  let r = await client.callTool({ name: 'set_plan', arguments: { steps: steps("R U R' U'", 'sexy move') } });
+  assert.ok(!r.isError);
+  assert.deepEqual(session.plan, ['R', 'U', "R'", "U'"]);
+  assert.deepEqual(session.labels, Array(4).fill('sexy move'));
+  assert.equal(session.state, solved, 'nothing is turned');
+  assert.match(textOf(r), /→ 1\. \[sexy move\] R: .*Hint: /);
+  r = await client.callTool({ name: 'apply_moves', arguments: { moves: 'R U' } });
+  assert.doesNotMatch(textOf(r), /did not follow/);
+  assert.equal(session.step, 2);
+  await client.callTool({ name: 'set_plan', arguments: { steps: [{ move: 'F2' }] } });
+  assert.deepEqual(session.plan, ['R', 'U', 'F2'], 'done steps kept, the rest replaced');
+  assert.deepEqual(session.labels, ['sexy move', 'sexy move', null]);
+  assert.equal(session.step, 2);
+  await client.callTool({ name: 'set_plan', arguments: { steps: steps('M x', 'stage 2'), append: true } });
+  assert.deepEqual(session.plan, ['R', 'U', 'F2', 'M', 'x']);
+  assert.equal(session.labels[4], 'stage 2');
+  await client.callTool({ name: 'set_plan', arguments: { steps: [] } });
+  assert.deepEqual(session.plan, ['R', 'U'], 'empty drops the remaining steps');
+  session.reset();
+  assert.equal(session.labels, null);
+  await client.callTool({ name: 'set_plan', arguments: { steps: [] } });
+  assert.equal(session.plan, null);
+  await close();
+});
+
+test('set_plan rejects invalid notation and steps with more than one move, changing nothing', async () => {
+  const { client, session, close } = await connect();
+  for (const bad of [[{ move: 'Q' }], [{ move: 'R U' }], [{ move: 'R' }, { move: 'K2' }]]) {
+    const r = await client.callTool({ name: 'set_plan', arguments: { steps: bad } });
+    assert.ok(r.isError, JSON.stringify(bad));
+  }
+  assert.equal(session.plan, null);
+  await close();
+});
