@@ -94,7 +94,7 @@ canvas.addEventListener('pointerdown', (e) => {
   }
   raycaster.setFromCamera(ndc(e), camera);
   const hit = cube.pick(raycaster);
-  if (!hit) return; // background: let OrbitControls orbit
+  if (!hit) return; // background: nothing on a mouse; on touch OrbitControls orbits
   controls.enabled = false;
   drag = { ...hit, x: e.clientX, y: e.clientY, id: e.pointerId, done: false };
   canvas.setPointerCapture(e.pointerId);
@@ -172,6 +172,9 @@ function dragToTurn({ cubie, point, normal }, dx, dy) {
 
 const controls = new OrbitControls(camera, canvas);
 controls.enablePan = false;
+// Left mouse only turns layers; the view orbits with the right or middle button (touch: one finger on the background).
+controls.mouseButtons = { LEFT: null, MIDDLE: THREE.MOUSE.ROTATE, RIGHT: THREE.MOUSE.ROTATE };
+canvas.addEventListener('mousedown', (e) => e.button === 1 && e.preventDefault()); // no autoscroll on middle-drag
 controls.enableDamping = true;
 
 function fitCamera() {
