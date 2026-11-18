@@ -5,6 +5,7 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { buildMcpServer } from '../src/mcp.js';
 import { Session } from '../src/session.js';
 import { moveHint } from '../../js/hints.js';
+import { applyMoves } from '../src/cube3.js';
 
 async function connect() {
   const session = new Session(null);
@@ -92,5 +93,36 @@ test('set_plan rejects invalid notation and steps with more than one move, chang
     assert.ok(r.isError, JSON.stringify(bad));
   }
   assert.equal(session.plan, null);
+  await close();
+});
+
+test('solve_stage stores the stage as a labelled plan that apply_moves follows', async () => {
+  const { client, session, close } = await connect();
+  session.apply("R U F' L2 D B' R2 U'");
+  const before = session.state;
+  const r = await client.callTool({ name: 'solve_stage', arguments: { cross_colour: 'white' } });
+  assert.ok(!r.isError, textOf(r));
+  assert.match(textOf(r), /Stage: cross/);
+  assert.match(textOf(r), /After this stage/);
+  assert.equal(session.state, before, 'nothing is turned');
+  assert.ok(session.plan.length > 0 && session.labels.every((l) => /cross/.test(l)));
+  const a = await client.callTool({ name: 'apply_moves', arguments: { moves: session.plan.join(' ') } });
+  assert.doesNotMatch(textOf(a), /did not follow/);
+  const again = await client.callTool({ name: 'solve_stage', arguments: { stage: 'cross' } });
+  assert.match(textOf(again), /already done/);
+  const bad = await client.callTool({ name: 'solve_stage', arguments: { stage: 'last-layer-cross' } });
+  assert.ok(bad.isError);
+  await close();
+});
+
+test('preview_moves returns the state after the moves without changing the cube or plan', async () => {
+  const { client, session, close } = await connect();
+  await client.callTool({ name: 'set_plan', arguments: { steps: [{ move: 'U' }] } });
+  const r = await client.callTool({ name: 'preview_moves', arguments: { moves: "R U R' U'" } });
+  assert.ok(textOf(r).includes(`Facelets (colour letters; top, right, front, bottom, left, back): ${applyMoves(session.state, "R U R' U'")}`));
+  assert.match(textOf(r), /Hold: /);
+  assert.equal(session.state, applyMoves(session.state, ''));
+  assert.deepEqual(session.plan, ['U']);
+  assert.ok((await client.callTool({ name: 'preview_moves', arguments: { moves: 'R Q' } })).isError);
   await close();
 });

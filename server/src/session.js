@@ -2,6 +2,7 @@ import { EventEmitter } from 'node:events';
 import { readFileSync, writeFileSync, mkdirSync, renameSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { invertMoves } from '../../js/notation.js';
+import { planStage, defaultCrossColour } from './beginner.js';
 import { SOLVED, applyMoves, isSolved, validate, solveDetailed, splitMoves, fromFaces, solvedLike, centreColours, schemeText } from './cube3.js';
 
 // States saved before colour letters were introduced used face letters in the Western scheme.
@@ -28,6 +29,7 @@ export class Session extends EventEmitter {
     this.history = []; // undo stack: { moves, before: { state, plan, step, planBase } }
     this.future = []; // redo stack: { moves, after: { state, plan, step, planBase } }
     this.draft = null; // { state, painted, at }: an unfinished painting the user sent; not the cube's state
+    this.crossColour = null; // cross colour of the last beginner-method stage
     try {
       const saved = JSON.parse(readFileSync(file, 'utf8'));
       saved.state = migrate(saved.state);
@@ -37,6 +39,7 @@ export class Session extends EventEmitter {
         if (Array.isArray(saved.history)) this.history = saved.history.slice(-HISTORY);
         if (Array.isArray(saved.future)) this.future = saved.future.slice(-HISTORY);
         if (saved.draft && DRAFT.test(saved.draft.state)) this.draft = saved.draft;
+        if (/^[WYROGB]$/.test(saved.crossColour ?? '')) this.crossColour = saved.crossColour;
       }
     } catch {
       /* no saved state yet */
@@ -62,8 +65,8 @@ export class Session extends EventEmitter {
     if (this.file) {
       try {
         mkdirSync(dirname(this.file), { recursive: true });
-        const { state, plan, step, planBase, labels, history, future, draft } = this;
-        writeFileSync(`${this.file}.tmp`, JSON.stringify({ state, plan, step, planBase, labels, history, future, draft }));
+        const { state, plan, step, planBase, labels, history, future, draft, crossColour } = this;
+        writeFileSync(`${this.file}.tmp`, JSON.stringify({ state, plan, step, planBase, labels, history, future, draft, crossColour }));
         renameSync(`${this.file}.tmp`, this.file);
       } catch (err) {
         console.error('could not save state:', err.message);
@@ -112,6 +115,21 @@ export class Session extends EventEmitter {
     this.future = []; // a redo would bring back a stale plan
     this.#commit({ type: 'plan' });
     return result;
+  }
+
+  /**
+   * Plan the next stage of the beginner method (see beginner.js) and store its steps as the plan, replacing the
+   * remaining steps. `crossColour` defaults to the colour whose solve is furthest along (ties: the one used last,
+   * then the top centre). Returns planStage's result plus { crossColour }. A stage already done changes nothing.
+   */
+  solveStage({ stage = null, crossColour = null } = {}) {
+    const X = crossColour ?? defaultCrossColour(this.state, this.crossColour);
+    const result = planStage(this.state, X, stage);
+    if (result.steps.length) {
+      this.crossColour = X;
+      this.setPlan(result.steps);
+    }
+    return { ...result, crossColour: X };
   }
 
   /**
