@@ -30,3 +30,45 @@ export function arrowSpec(move) {
   const layerCentre = layers.reduce((a, b) => a + b, 0) / layers.length - 1;
   return { axis, sense, half, face, strips, layerCentre, layerWidth: layers.length };
 }
+
+// Angles between a face's normal and the line from that face's centre to the camera. The default view already has
+// R, U and F at ~65-68°, where the arc still reads as a ring, so the switch sits a little above 70°.
+const ARC_ON = Math.cos((72 * Math.PI) / 180); // the arc returns once the face is within 72° of the view…
+const ARC_OFF = Math.cos((76 * Math.PI) / 180); // …and gives way past 76° (hysteresis: no flicker while orbiting)
+const STRIP_MIN = Math.cos((80 * Math.PI) / 180); // a side strip needs its face within 80° of the view…
+const STRIP_SPAN = 0.35; // …and must not point within ~20° of the line of sight (it would shrink to a dot)
+
+const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const norm = (a) => {
+  const l = Math.hypot(...a) || 1;
+  return a.map((v) => v / l);
+};
+
+/**
+ * Which arrows to draw for `spec` seen from a camera at `eye` (cube centred on the origin, outer faces at ±1.5).
+ * The arc lies in the turning face's plane, so when that face is seen nearly edge-on it squashes into a line across
+ * the neighbouring faces and reads as a different move. Past ~70° it is replaced by straight arrows along the moving
+ * row/column on each visible neighbouring face. `arcBefore` is last frame's choice (for hysteresis).
+ * Returns { arc: bool, strips: [index into spec.strips] }.
+ */
+export function arrowView(spec, eye, arcBefore = false) {
+  if (spec.face) {
+    const c = dot(spec.face, norm(sub(eye, spec.face.map((v) => v * 1.5))));
+    if (c > (arcBefore ? ARC_OFF : ARC_ON)) return { arc: true, strips: [] };
+  }
+  const scored = spec.strips.map(({ normal, dir }, i) => {
+    const at = normal.map((v, k) => v * 1.5 + (k === spec.axis ? spec.layerCentre : 0));
+    const view = norm(sub(eye, at));
+    const facing = dot(normal, view);
+    const along = dot(dir, view);
+    return { i, facing, span: Math.sqrt(Math.max(0, 1 - along * along)) };
+  });
+  const strips = scored.filter((s) => s.facing > STRIP_MIN && s.span > STRIP_SPAN).map((s) => s.i);
+  if (strips.length) return { arc: false, strips };
+  // Nothing reads well (looking straight down the axis of a middle slice, so every side is edge-on): the arc if
+  // there is one, else the least hidden strip.
+  if (spec.face) return { arc: true, strips: [] };
+  const best = scored.sort((a, b) => b.facing - a.facing)[0];
+  return { arc: false, strips: [best.i] };
+}

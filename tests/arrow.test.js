@@ -67,3 +67,60 @@ test('the front strip agrees with the plain-language hint', () => {
     assert.ok(dot(strip.dir, VEC[word]) > 0, `${m}: arrow ${strip.dir} vs hint "${word}"`);
   }
 });
+
+import { arrowView } from '../js/arrowspec.js';
+
+const deg = (d) => (d * Math.PI) / 180;
+// camera at distance 11 in direction (elevation, azimuth from +z towards +x)
+const eyeAt = (el, az) => [Math.cos(deg(el)) * Math.sin(deg(az)) * 11, Math.sin(deg(el)) * 11, Math.cos(deg(el)) * Math.cos(deg(az)) * 11];
+const shownNormals = (spec, v) => v.strips.map((i) => spec.strips[i].normal.join());
+
+test("L' seen from the front-top: straight arrows on U and F, not a squashed arc", () => {
+  for (const m of ["L'", 'L', 'L2', "x'", 'x2']) {
+    const spec = arrowSpec(m);
+    const v = arrowView(spec, eyeAt(35, -8)); // a little to the left: the L face is ~83° from the view
+    assert.equal(v.arc, false, m);
+    assert.deepEqual(shownNormals(spec, v).sort(), ['0,0,1', '0,1,0'], m);
+  }
+});
+
+const DEFAULT_EYE = (() => {
+  const l = Math.hypot(0.9, 0.85, 1.35);
+  return [0.9, 0.85, 1.35].map((v) => (v / l) * 11.1); // main.js fitCamera for a 3×3
+})();
+
+test('the default view keeps the arc for R, U and F (and x, y, z)', () => {
+  for (const m of ['R', "R'", 'R2', 'U', "U'", 'U2', 'F', "F'", 'F2', 'x', "y'", 'z2', 'Rw', "Uw'"])
+    assert.equal(arrowView(arrowSpec(m), DEFAULT_EYE).arc, true, m);
+});
+
+test('arc switch has hysteresis between 72° and 76°', () => {
+  const spec = arrowSpec('R');
+  const at = (a) => [1.5 + 10 * Math.cos(deg(a)), 0, 10 * Math.sin(deg(a))]; // R face centre + 10 at angle a
+  assert.equal(arrowView(spec, at(70), false).arc, true);
+  assert.equal(arrowView(spec, at(74), false).arc, false);
+  assert.equal(arrowView(spec, at(74), true).arc, true);
+  assert.equal(arrowView(spec, at(78), true).arc, false);
+});
+
+test('side arrows keep the right direction for prime and double moves', () => {
+  for (const b of ['L', 'R', 'U', 'x', 'M']) {
+    const q = arrowSpec(b), p = arrowSpec(`${b}'`), d = arrowSpec(`${b}2`);
+    q.strips.forEach((s, i) => {
+      assert.deepEqual(p.strips[i].dir.map((v) => -v + 0), s.dir.map((v) => v + 0), `${b}' reverses ${b}`);
+      assert.deepEqual(d.strips[i].dir.map((v) => v + 0), s.dir.map((v) => v + 0), `${b}2 follows ${b}`);
+    });
+  }
+});
+
+test('something is always shown, and several strips only on faces towards the camera', () => {
+  for (const m of ALL)
+    for (const el of [-80, -40, 0, 40, 80])
+      for (const az of [0, 60, 120, 180, 240, 300]) {
+        const spec = arrowSpec(m);
+        const eye = eyeAt(el, az);
+        const v = arrowView(spec, eye);
+        assert.ok(v.arc || v.strips.length, `${m} @${el},${az}: nothing shown`);
+        if (v.strips.length > 1) for (const i of v.strips) assert.ok(dot(spec.strips[i].normal, eye) > 0, `${m} @${el},${az}: strip faces away`);
+      }
+});

@@ -16,7 +16,8 @@
       {
         "imports": {
           "three": "https://cdn.jsdelivr.net/npm/three@0.187.0/build/three.module.js",
-          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.187.0/examples/jsm/"
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.187.0/examples/jsm/",
+          "lucide/": "https://cdn.jsdelivr.net/npm/lucide@1.76.0/dist/esm/"
         }
       }
     </script>
@@ -35,30 +36,30 @@
     </div>
 
     <nav id="toolbar">
-      <button data-cmd="scramble">Scramble</button>
-      <button data-cmd="solve">Solve</button>
-      <button data-cmd="undo" title="Undo (Ctrl+Z)">Undo</button>
-      <button data-cmd="redo" title="Redo (Ctrl+Y or Ctrl+Shift+Z)">Redo</button>
-      <button data-cmd="reset">Reset</button>
-      <button id="live-toggle" class="server-only" title="Mirror your physical cube and let Claude solve it">Real cube</button>
-      <button id="toggle-panel">Settings</button>
+      <button data-icon="shuffle" data-cmd="scramble">Scramble</button>
+      <button data-icon="wand-sparkles" data-cmd="solve">Solve</button>
+      <button data-icon="rotate-ccw" data-cmd="undo" title="Undo (Ctrl+Z)">Undo</button>
+      <button data-icon="rotate-cw" data-cmd="redo" title="Redo (Ctrl+Y or Ctrl+Shift+Z)">Redo</button>
+      <button data-icon="refresh-cw" data-cmd="reset">Reset</button>
+      <button data-icon="box" id="live-toggle" class="server-only" title="Mirror your physical cube and let Claude solve it">Real cube</button>
+      <button data-icon="settings" id="toggle-panel">Settings</button>
     </nav>
 
     <div id="live-bar">
       <span id="live-status"></span>
       <span id="cube-code" title="Tell Claude this code so it works on this cube"></span>
-      <button id="new-cube" type="button" title="Start another cube with its own code (this one stays at its link)">New cube</button>
-      <button id="plan-prev" type="button" hidden>◀ Back</button>
-      <button id="plan-next" type="button" hidden></button>
-      <button id="paint-toggle" type="button">Paint</button>
+      <button data-icon="plus" id="new-cube" type="button" title="Start another cube with its own code (this one stays at its link)">New cube</button>
+      <button data-icon="step-back" id="plan-prev" type="button" hidden>Back</button>
+      <button data-icon="step-forward" id="plan-next" type="button" hidden></button>
+      <button data-icon="paintbrush" id="paint-toggle" type="button">Paint</button>
       <div id="palette"></div>
-      <button id="paint-clear" type="button" title="Start painting from a solved cube">Clear</button>
-      <button id="send" type="button">Send to Claude</button>
+      <button data-icon="eraser" id="paint-clear" type="button" title="Start painting from a solved cube">Clear</button>
+      <button data-icon="send" id="send" type="button">Send to Claude</button>
       <div id="paint-check"></div>
       <div id="remote-changed" hidden>
         <span>Claude changed the cube while you were painting. Discard your edits?</span>
-        <button id="remote-discard" type="button">Discard edits</button>
-        <button id="remote-keep" type="button">Keep painting</button>
+        <button data-icon="trash" id="remote-discard" type="button">Discard edits</button>
+        <button data-icon="paintbrush" id="remote-keep" type="button">Keep painting</button>
       </div>
     </div>
 
@@ -95,7 +96,7 @@
         <h3>Apply moves</h3>
         <form id="alg-form">
           <input id="alg" placeholder="R U R' U' · 2Rw · M2 · x" autocomplete="off" spellcheck="false" />
-          <button>Apply</button>
+          <button data-icon="play">Apply</button>
         </form>
       </section>
 
@@ -103,13 +104,13 @@
         <h3>Save / load</h3>
         <form id="state-form">
           <input id="state-text" placeholder="Paste cube text, a link or JSON" autocomplete="off" spellcheck="false" />
-          <button>Load</button>
+          <button data-icon="file-input">Load</button>
         </form>
         <div class="buttons">
-          <button id="copy-text" type="button">Copy text</button>
-          <button id="copy-link" type="button">Copy link</button>
-          <button id="download" type="button">Download</button>
-          <button id="upload" type="button">Upload</button>
+          <button data-icon="copy" id="copy-text" type="button">Copy text</button>
+          <button data-icon="link" id="copy-link" type="button">Copy link</button>
+          <button data-icon="download" id="download" type="button">Download</button>
+          <button data-icon="upload" id="upload" type="button">Upload</button>
           <input id="upload-file" type="file" accept=".json,.txt,application/json,text/plain" hidden />
         </div>
         <p class="hint">A 3×3 is saved as the same 54 letters Claude's <code>set_cube</code> takes; other sizes start with the size, e.g. <code>4:UUU…</code>.</p>
@@ -133,7 +134,7 @@
         </p>
       </section>
 
-      <button id="defaults" type="button">Restore defaults</button>
+      <button data-icon="undo-2" id="defaults" type="button">Restore defaults</button>
     </aside>
 
     <script type="module" src="js/main.js"></script>

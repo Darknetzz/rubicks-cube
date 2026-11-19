@@ -38,6 +38,9 @@ button {
   padding: 6px 12px;
   cursor: pointer;
 }
+button[data-icon] { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+button .icon { width: 16px; height: 16px; flex: none; }
+button .label:empty { display: none; }
 button:hover { background: rgba(255, 255, 255, 0.15); }
 
 input[type='number'], input:not([type]), select {
@@ -78,6 +81,8 @@ input[type='number'], input:not([type]), select {
   border-radius: 12px;
   flex-wrap: wrap;
   justify-content: center;
+  width: max-content; /* not shrink-to-fit at left: 50%, which would stack the buttons on a phone */
+  max-width: calc(100vw - 32px);
 }
 
 #panel {
@@ -101,7 +106,7 @@ body.panel-open #panel { transform: none; }
   body.panel-open #toolbar { left: calc((100% - var(--panel-w)) / 2); }
 }
 @media (max-width: 900px) {
-  #panel { bottom: 80px; border-bottom: 1px solid var(--line); }
+  #panel { bottom: calc(var(--toolbar-h, 56px) + 24px); border-bottom: 1px solid var(--line); }
 }
 
 section { padding-bottom: 14px; margin-bottom: 14px; border-bottom: 1px solid var(--line); }
@@ -139,9 +144,9 @@ select option { color: #000; }
 
 /* ---------- real-cube mode (only when served by server/) ---------- */
 .server-only, #live-bar, #palette, #paint-clear, #send { display: none; }
-body.has-server .server-only { display: inline-block; }
+body.has-server .server-only { display: inline-flex; }
 body.live [data-cmd] { display: none; }
-body.live [data-cmd='undo'], body.live [data-cmd='redo'] { display: inline-block; }
+body.live [data-cmd='undo'], body.live [data-cmd='redo'] { display: inline-flex; }
 #plan-next { border-color: var(--accent); color: var(--accent); font-weight: 600; }
 #plan-next[hidden], #plan-prev[hidden] { display: none; }
 body.live #live-bar { display: flex; }
@@ -150,7 +155,7 @@ button.active { border-color: var(--accent); color: var(--accent); }
 
 #live-bar {
   position: fixed;
-  bottom: 76px;
+  bottom: calc(var(--toolbar-h, 56px) + 24px); /* just above the toolbar, however many rows it wraps to */
   left: 50%;
   transform: translateX(-50%);
   gap: 8px;
@@ -161,6 +166,7 @@ button.active { border-color: var(--accent); color: var(--accent); }
   border-radius: 12px;
   flex-wrap: wrap;
   justify-content: center;
+  width: max-content;
   max-width: calc(100vw - 32px);
 }
 @media (min-width: 901px) {

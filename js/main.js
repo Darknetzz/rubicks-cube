@@ -14,9 +14,13 @@ import { parseState, encodeState, stateToJson, stateLink } from './statefile.js'
 import { applyMoves } from './facelets.js';
 import { hintText } from './hints.js';
 import { MoveArrow } from './arrow.js';
+import { decorate, setLabel } from './icons.js';
 import { LayerHighlight } from './highlight.js';
 
 const $ = (id) => document.getElementById(id);
+decorate();
+// The live bar and the phone-sized panel sit just above the toolbar, which wraps to more rows on narrow screens.
+new ResizeObserver(([e]) => document.body.style.setProperty('--toolbar-h', `${e.borderBoxSize[0].blockSize}px`)).observe($('toolbar'));
 const settings = loadSettings();
 const save = () => saveSettings(settings);
 
@@ -443,7 +447,7 @@ function renderLiveButtons() {
   const next = currentMove();
   const done = $('plan-next');
   done.hidden = !next || live.painting;
-  done.textContent = next ? `Done: ${next}` : '';
+  setLabel(done, next ? `Done: ${next}` : '');
   done.title = next ? `Record that you did ${next} on your cube (${hintText(next)})` : '';
   const snap = live.on && live.snap;
   const back = $('plan-prev');
@@ -534,7 +538,7 @@ function renderPaintCheck() {
   msg.textContent = errors.length ? errors[0] : 'Looks like a real cube. Ready to send.';
   box.replaceChildren(...chips, msg);
   // An unfinished cube can still go to Claude as a draft: Claude sees it next to the real state and helps fill it in.
-  $('send').textContent = errors.length ? 'Send unfinished to Claude' : 'Send to Claude';
+  setLabel($('send'), errors.length ? 'Send unfinished to Claude' : 'Send to Claude');
   $('send').title = errors.length
     ? 'Claude sees this painting (and which stickers you painted) and helps you work out the rest. Your cube stays as it is until then.'
     : '';

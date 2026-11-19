@@ -1,7 +1,7 @@
 // The "next move" arrow drawn on a 3×3 (real-cube mode). Geometry comes from arrowSpec (js/arrowspec.js), which
 // is tested against the facelet model, so the arrow always points the way the stickers really move.
 import * as THREE from 'three';
-import { arrowSpec } from './arrowspec.js';
+import { arrowSpec, arrowView } from './arrowspec.js';
 
 const OUT = 1.56; // just above the stickers (outer faces are at 1.5)
 const TUBE = 0.055;
@@ -48,8 +48,10 @@ export class MoveArrow {
     this.fill = new THREE.MeshBasicMaterial({ color: 0xffffff });
     this.edge = new THREE.MeshBasicMaterial({ color: 0x111111, side: THREE.BackSide });
     this.move = null;
+    this.spec = null;
     this.face = null; // { part, normal }
-    this.strips = []; // [{ part, normal }]
+    this.strips = []; // [{ part, normal }], same order as spec.strips
+    this.arcShown = false;
     this.owned = []; // geometries / textures / sprite materials to dispose
   }
 
@@ -65,9 +67,8 @@ export class MoveArrow {
     } catch {
       return;
     }
+    this.spec = spec;
     const axis = v3([0, 1, 2].map((k) => (k === spec.axis ? 1 : 0)));
-    // The strip the plain-language hint talks about (js/hints.js): the top edge for front/back turns, else the front.
-    this.preferred = spec.axis === 2 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(0, 0, 1);
     if (spec.face) {
       // Arc around the turning axis on the outer face; increasing angle = positive rotation about +axis.
       const normal = v3(spec.face);
@@ -93,31 +94,25 @@ export class MoveArrow {
   }
 
   /**
-   * Per frame: the face arrow shows when its face is towards the camera. When it is hidden (back, bottom, left in
-   * the default view) or the move is a middle slice, a side arrow shows instead, so the user sees which way that
-   * layer's visible stickers move: on the strip the hint names when it faces the camera, else the most visible one.
+   * Per frame (so it follows the orbit): the arc on the turning face while that face is within ~70° of the view,
+   * else straight arrows along the moving row/column on the visible neighbouring faces (see arrowView).
    */
   update(camera) {
-    if (!this.move) return;
-    const eye = camera.position;
-    const faceShown = !!this.face && this.face.normal.dot(eye) > 1.5;
-    if (this.face) this.face.part.visible = faceShown;
-    let best = null;
-    for (const s of this.strips) {
-      s.part.visible = false;
-      const d = s.normal.dot(eye);
-      const score = d + (s.normal.equals(this.preferred) ? 100 : 0);
-      if (d > 1.5 && (!best || score > best.score)) best = { s, score };
-    }
-    if (!faceShown && best) best.s.part.visible = true;
+    if (!this.spec) return;
+    const { arc, strips } = arrowView(this.spec, camera.position.toArray(), this.arcShown);
+    this.arcShown = arc;
+    if (this.face) this.face.part.visible = arc;
+    this.strips.forEach((s, i) => (s.part.visible = strips.includes(i)));
   }
 
   clear() {
     this.group.clear();
     for (const x of this.owned) x.dispose();
     this.owned = [];
+    this.spec = null;
     this.face = null;
     this.strips = [];
+    this.arcShown = false;
     this.move = null;
   }
 
