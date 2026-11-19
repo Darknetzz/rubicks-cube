@@ -67,6 +67,7 @@ npm start              # npx serve .
 `server/` is a small Node service that serves the page and also:
 
 - shares one physical 3×3's state between the page (Paint → **Send to Claude**, then a live view over SSE) and Claude, which reaches it through an MCP endpoint
+- keeps **many cubes**, each with its own code. The page puts its cube's code in the address (`?cube=k3f9x2m7qa`) and shows it in real-cube mode; it reopens the last cube you used, or makes a new random code. **New cube** starts another one. Give Claude the code: every MCP tool takes an optional `cube` argument (without it, the shared `default` cube, which is the old single cube). Each cube is saved as `cubes/<code>.json` next to `DATA_FILE`. The code is the only key to a cube, so share the link only with people who may change it
 - solves it in as few moves as it can find within a time budget:
   1. an IDA* search for an exact **optimal** solution (half-turn metric). It handles cubes up to about 10 moves from solved in milliseconds and stops after `SHORT_SEARCH_MS` (default 300).
   2. If that runs out, Kociemba's two-phase algorithm (vendored [cubejs](https://github.com/ldez/cubejs), MIT, ≤22 moves), asked again for one move fewer each time it succeeds, until `SOLVE_BUDGET_MS` (default 2000) is used up.

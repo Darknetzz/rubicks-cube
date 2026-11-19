@@ -1,10 +1,10 @@
 import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { timingSafeEqual } from 'node:crypto';
-import { join, resolve, extname } from 'node:path';
+import { join, resolve, extname, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import { Session } from './session.js';
+import { Cubes, validCube, DEFAULT_CUBE } from './cubes.js';
 import { buildMcpServer } from './mcp.js';
 import { initSolver } from './cube3.js';
 
@@ -18,12 +18,12 @@ const MIME = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=u
   '.svg': 'image/svg+xml', '.png': 'image/png' };
 const STATIC = /^\/(index\.html|style\.css|js\/[a-z0-9-]+\.js|assets\/[a-z0-9-]+\.(svg|png))$/;
 
-const session = new Session(DATA_FILE);
-const clients = new Set();
+const cubes = new Cubes(DATA_FILE, join(dirname(DATA_FILE), 'cubes'));
+const clients = new Map(); // cube id -> Set of SSE responses
 
-session.on('change', (event) => {
+cubes.on('change', (id, event) => {
   const data = `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`;
-  for (const res of clients) res.write(data);
+  for (const res of clients.get(id) ?? []) res.write(data);
 });
 
 function send(res, status, body, type = 'application/json') {
@@ -66,7 +66,7 @@ async function handleMcp(req, res) {
   if (!tokenOk(bearer)) return send(res, 401, { error: 'unauthorized' });
   if (req.method !== 'POST') return send(res, 405, { error: 'method not allowed' }); // stateless: no GET stream / DELETE
   const body = await readBody(req);
-  const server = buildMcpServer(session);
+  const server = buildMcpServer((id) => cubes.get(id ?? DEFAULT_CUBE));
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
   res.on('close', () => {
     transport.close();
@@ -76,24 +76,36 @@ async function handleMcp(req, res) {
   await transport.handleRequest(req, res, body);
 }
 
-function handleEvents(req, res) {
+function handleEvents(req, res, id, session) {
   res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', 'x-accel-buffering': 'no' });
   res.write(`event: state\ndata: ${JSON.stringify({ type: 'state', ...session.snapshot() })}\n\n`);
-  clients.add(res);
+  if (!clients.has(id)) clients.set(id, new Set());
+  clients.get(id).add(res);
   const ping = setInterval(() => res.write(': ping\n\n'), 25000);
   req.on('close', () => {
     clearInterval(ping);
-    clients.delete(res);
+    clients.get(id)?.delete(res);
+    if (clients.get(id)?.size === 0) clients.delete(id);
   });
 }
 
 async function route(req, res) {
-  const { pathname } = new URL(req.url, 'http://x');
+  const url = new URL(req.url, 'http://x');
+  const { pathname } = url;
 
   if (pathname === '/mcp' || pathname === '/mcp/') return handleMcp(req, res);
 
   if (pathname === '/healthz') return send(res, 200, { ok: true });
-  if (pathname === '/api/events' && req.method === 'GET') return handleEvents(req, res);
+
+  // Every /api route works on one cube, picked by ?cube=<code> (the shared default cube without it).
+  let id;
+  let session;
+  if (pathname.startsWith('/api/')) {
+    id = url.searchParams.get('cube') || DEFAULT_CUBE;
+    if (!validCube(id)) return send(res, 400, { error: 'Invalid cube code.' });
+    session = cubes.get(id);
+  }
+  if (pathname === '/api/events' && req.method === 'GET') return handleEvents(req, res, id, session);
   // Moves done on the real cube, entered on the page (Claude records them with apply_moves), undo/redo, and
   // stepping back and forth along the plan.
   if (['/api/moves', '/api/undo', '/api/redo', '/api/goto'].includes(pathname)) {

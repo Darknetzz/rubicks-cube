@@ -19,7 +19,13 @@ Workflow:
    preview_moves shows what a sequence would do without touching the cube.
 4. After the user confirms they did a batch, call apply_moves with exactly those moves so the web page animates
    and progress is tracked. Ask them to compare their cube with the page if anything looks off.
-5. If the user made a mistake, have them describe/paint the cube again and re-solve.`;
+5. If the user made a mistake, have them describe/paint the cube again and re-solve.
+Cube code: the server holds many cubes. The page shows its cube's code in real-cube mode (and in its address as
+?cube=...). Ask the user for that code first and pass it as "cube" to EVERY tool call; without it the tools use a
+shared default cube, which is not the one on the user's page unless their address says ?cube=default.`;
+
+const CUBE_ARG = z.string().optional()
+  .describe('The cube code the user sees on the page (e.g. k3f9x2m7qa); omit only for the shared default cube.');
 
 const text = (t) => ({ content: [{ type: 'text', text: t }] });
 const fail = (t) => ({ content: [{ type: 'text', text: t }], isError: true });
@@ -78,19 +84,32 @@ function report(session, note = '') {
 const COLOUR = { white: 'W', yellow: 'Y', red: 'R', orange: 'O', green: 'G', blue: 'B' };
 const colourLetter = (c) => (c.length === 1 ? c.toUpperCase() : COLOUR[c.toLowerCase()]);
 
-export function buildMcpServer(session) {
+export function buildMcpServer(sessions) {
+  const pick = typeof sessions === 'function' ? sessions : () => sessions;
+  // Every tool takes the optional cube code and works on that cube.
+  const register = (name, def, handler) =>
+    server.registerTool(name, { ...def, inputSchema: { ...def.inputSchema, cube: CUBE_ARG } }, async (args = {}) => {
+      let session;
+      try {
+        session = pick(args.cube || undefined);
+      } catch (err) {
+        return fail(err.message);
+      }
+      return handler(session, args);
+    });
+
   const server = new McpServer({ name: 'rubiks-cube', version: '1.0.0' }, { instructions: INSTRUCTIONS });
 
-  server.registerTool('get_cube', {
+  register('get_cube', {
     title: 'Get cube',
     description:
       "Current state of the user's physical cube: how to hold it (named by the cube's own centre colours), its colour " +
       'scheme, a text diagram, and solve progress with each move explained. If the user sent an unfinished painting, ' +
       'it is shown first, with which stickers they painted and what is wrong with it.',
     annotations: { readOnlyHint: true },
-  }, async () => text(report(session)));
+  }, async (session) => text(report(session)));
 
-  server.registerTool('set_cube', {
+  register('set_cube', {
     title: 'Set cube state',
     description:
       'Replace the cube state. 54 colour letters W Y R O G B (white yellow red orange green blue), faces in order ' +
@@ -99,20 +118,20 @@ export function buildMcpServer(session) {
       'top up). Any colour scheme is accepted: the six centres decide which colour belongs to which face, so a ' +
       'Japanese cube (white opposite blue) is fine. Clears the plan and any unfinished painting.',
     inputSchema: { facelets: z.string().length(54).regex(/^[WYROGB]+$/i) },
-  }, async ({ facelets }) => {
+  }, async (session, { facelets }) => {
     const state = facelets.toUpperCase();
     const errors = validate(state);
     if (errors.length) return fail(`Not a valid cube: ${errors.join(' ')}`);
     return text(report(session, session.setState(state)));
   });
 
-  server.registerTool('solve', {
+  register('solve', {
     title: 'Solve',
     description:
       'Compute a short solution for the current state and store it as the plan. Cubes a few moves from solved get ' +
       'an exact optimal solution; otherwise Kociemba two-phase is repeated for shorter and shorter solutions within ' +
       'a time budget (≤22 moves). The output says whether the move count is proven optimal.',
-  }, async () => {
+  }, async (session) => {
     try {
       const { moves, optimal, ms } = session.solve();
       if (!moves.length) return text('Already solved.');
@@ -123,7 +142,7 @@ export function buildMcpServer(session) {
     }
   });
 
-  server.registerTool('set_plan', {
+  register('set_plan', {
     title: 'Set plan steps',
     description:
       'Store your own sequence of moves as the plan, instead of the solver output: an algorithm, one stage of a method ' +
@@ -141,7 +160,7 @@ export function buildMcpServer(session) {
       })).describe('The steps in order.'),
       append: z.boolean().optional().describe('Add after all existing steps instead of replacing the remaining ones.'),
     },
-  }, async ({ steps, append }) => {
+  }, async (session, { steps, append }) => {
     try {
       session.setPlan(steps, { append: !!append });
       return text(report(session));
@@ -150,7 +169,7 @@ export function buildMcpServer(session) {
     }
   });
 
-  server.registerTool('solve_stage', {
+  register('solve_stage', {
     title: 'Solve one stage (beginner method)',
     description:
       'Beginner (layer-by-layer) method, one stage at a time: works out the moves for ONE stage from the current ' +
@@ -167,7 +186,7 @@ export function buildMcpServer(session) {
         .describe('Colour of the cross / first layer, a letter or name. Default: the colour whose solve is furthest ' +
           'along (the one used last on ties), else the top centre as the user holds the cube.'),
     },
-  }, async ({ stage, cross_colour }) => {
+  }, async (session, { stage, cross_colour }) => {
     try {
       const r = session.solveStage({ stage: stage ?? null, crossColour: cross_colour ? colourLetter(cross_colour) : null });
       const colour = COLOUR_NAMES[r.crossColour];
@@ -191,7 +210,7 @@ export function buildMcpServer(session) {
     }
   });
 
-  server.registerTool('preview_moves', {
+  register('preview_moves', {
     title: 'Preview moves',
     description:
       'Apply a move sequence (standard notation as the user holds the cube, e.g. "R U R\' U\'", slices, wide ' +
@@ -199,7 +218,7 @@ export function buildMcpServer(session) {
       'get_cube. The real cube, the plan and the web page are not changed.',
     annotations: { readOnlyHint: true },
     inputSchema: { moves: z.string().min(1) },
-  }, async ({ moves }) => {
+  }, async (session, { moves }) => {
     let list;
     try {
       list = splitMoves(moves);
@@ -211,14 +230,14 @@ export function buildMcpServer(session) {
     return text([`Preview after ${list.join(' ')} (the real cube is unchanged):`, '', ...stateLines(after), '', faceletsLine(after)].join('\n'));
   });
 
-  server.registerTool('apply_moves', {
+  register('apply_moves', {
     title: 'Apply moves',
     description:
       'Record moves the user has done on the real cube (standard notation, e.g. "R U2 F\'"). ' +
       'Faces are named by position as the user holds the cube (R = right side, whatever its centre colour). ' +
       'Updates the state, advances the plan and animates the web page.',
     inputSchema: { moves: z.string().min(1) },
-  }, async ({ moves }) => {
+  }, async (session, { moves }) => {
     const hadPlan = !!session.plan;
     try {
       const followed = session.apply(moves);
@@ -229,11 +248,11 @@ export function buildMcpServer(session) {
     }
   });
 
-  server.registerTool('reset_cube', {
+  register('reset_cube', {
     title: 'Reset cube',
     description: "Set the cube to solved in its current colour scheme and orientation, and clear the plan.",
     annotations: { destructiveHint: true },
-  }, async () => {
+  }, async (session) => {
     session.reset();
     return text(report(session));
   });

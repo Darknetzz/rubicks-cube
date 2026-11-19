@@ -8,7 +8,7 @@ import {
   ACTIONS, FACE_KEYS, FACE_NAMES, MIN_SIZE, MAX_SIZE, SCHEMES, presetOf, faceColors, isScheme,
   loadSettings, saveSettings, defaultSettings, normalizeKey, keyLabel,
 } from './settings.js';
-import { serverAvailable, connect, postState, postDraft, postMoves, postUndo, postRedo, postGoto } from './live.js';
+import { serverAvailable, cubeCode, newCube, connect, postState, postDraft, postMoves, postUndo, postRedo, postGoto } from './live.js';
 import { validate, colourCounts, holding, COLOURS, COLOUR_NAMES } from './validate.js';
 import { parseState, encodeState, stateToJson, stateLink } from './statefile.js';
 import { applyMoves } from './facelets.js';
@@ -466,7 +466,8 @@ function setLive(on) {
       cube.build(3);
       fitCamera();
     }
-    setMessage('Real-cube mode: paint your cube, send it, then ask Claude to solve it. Turns you make here are recorded as moves on your real cube.');
+    $('cube-code').textContent = `Cube code: ${cubeCode()}`;
+    setMessage(`Real-cube mode: paint your cube, send it, then ask Claude to solve cube ${cubeCode()}. Turns you make here are recorded as moves on your real cube.`);
   } else {
     live.disconnect?.();
     live.snap = null;
@@ -558,6 +559,9 @@ function renderPalette() {
 }
 
 $('live-toggle').addEventListener('click', () => setLive(!live.on));
+$('new-cube').addEventListener('click', () => {
+  if (confirm('Start a new cube with its own code? This cube stays at its current link.')) newCube();
+});
 $('plan-prev').addEventListener('click', () => {
   const snap = live.snap;
   if (snap?.plan && snap.step > 0) sendLive(() => postGoto(snap.step - 1));

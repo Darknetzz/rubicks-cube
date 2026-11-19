@@ -167,6 +167,7 @@ button.active { border-color: var(--accent); color: var(--accent); }
   body.panel-open #live-bar { left: calc((100% - var(--panel-w)) / 2); }
 }
 #live-status { font-size: 12px; color: var(--muted); }
+#cube-code { font-size: 12px; color: var(--muted); user-select: all; }
 #live-status.ok { color: #5be38a; }
 #live-status.error { color: #ff6b6b; }
 #palette { gap: 6px; }
