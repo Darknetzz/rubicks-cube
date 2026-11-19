@@ -14,7 +14,7 @@ import { parseState, encodeState, stateToJson, stateLink } from './statefile.js'
 import { applyMoves } from './facelets.js';
 import { hintText } from './hints.js';
 import { MoveArrow } from './arrow.js';
-import { decorate, setLabel } from './icons.js';
+import { decorate, setLabel, icon } from './icons.js';
 import { LayerHighlight } from './highlight.js';
 
 const $ = (id) => document.getElementById(id);
@@ -463,7 +463,7 @@ function setLive(on) {
   setPainting(false);
   if (on) {
     live.disconnect = connect(onLiveEvent, (ok) => {
-      $('live-status').textContent = ok ? 'Connected' : 'Reconnecting…';
+      $('live-status').replaceChildren(icon(ok ? 'circle-check' : 'loader-circle'), ok ? 'Connected' : 'Reconnecting…');
       $('live-status').className = ok ? 'ok' : 'error';
     });
     if (cube.n !== 3) {
@@ -521,22 +521,17 @@ function setPainting(on, { fresh = false } = {}) {
 function renderPaintCheck() {
   const box = $('paint-check');
   const facelets = liveFacelets();
-  if (!live.painting || !facelets) return box.replaceChildren();
+  if (!live.painting || !facelets) {
+    renderSwatchCounts(null);
+    return box.replaceChildren();
+  }
   const counts = colourCounts(facelets);
   const errors = validate(facelets);
-  const chips = [...COLOURS].map((c) => {
-    const chip = document.createElement('span');
-    chip.className = counts[c] === 9 ? 'chip' : 'chip bad';
-    chip.title = `${COLOUR_NAMES[c]}: ${counts[c]} of 9`;
-    const dot = document.createElement('i');
-    dot.style.background = settings.palette[c];
-    chip.append(dot, String(counts[c]));
-    return chip;
-  });
+  renderSwatchCounts(counts);
   const msg = document.createElement('span');
   msg.className = errors.length ? 'problem' : 'ok';
   msg.textContent = errors.length ? errors[0] : 'Looks like a real cube. Ready to send.';
-  box.replaceChildren(...chips, msg);
+  box.replaceChildren(msg);
   // An unfinished cube can still go to Claude as a draft: Claude sees it next to the real state and helps fill it in.
   setLabel($('send'), errors.length ? 'Send unfinished to Claude' : 'Send to Claude');
   $('send').title = errors.length
@@ -551,14 +546,33 @@ function renderPalette() {
     const b = document.createElement('button');
     b.type = 'button';
     b.title = COLOUR_NAMES[c];
+    b.dataset.colour = c;
     b.style.background = settings.palette[c];
     b.classList.toggle('selected', live.paintColour === c);
+    const count = document.createElement('span');
+    count.className = 'count';
+    b.append(count);
     b.addEventListener('click', () => {
       live.paintColour = c;
       renderPalette();
       savePaint();
     });
     box.append(b);
+  }
+  const facelets = live.painting && liveFacelets();
+  renderSwatchCounts(facelets ? colourCounts(facelets) : null);
+}
+
+// Each palette swatch shows how many stickers have its colour (a real cube has 9), red when it is off.
+function renderSwatchCounts(counts) {
+  for (const b of $('palette').children) {
+    const c = b.dataset.colour;
+    const n = counts?.[c];
+    const span = b.querySelector('.count');
+    span.textContent = n ?? '';
+    span.classList.toggle('bad', n != null && n !== 9);
+    b.title = n == null ? COLOUR_NAMES[c] : `${COLOUR_NAMES[c]}: ${n} of 9 stickers`;
+    b.setAttribute('aria-label', b.title);
   }
 }
 

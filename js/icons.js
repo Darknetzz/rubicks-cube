@@ -1,6 +1,8 @@
 // Lucide icons for the buttons: one module per icon (only these are fetched), not the whole set or an icon font.
 // A button opts in with data-icon="name"; its text moves into a .label span next to the icon.
 import createElement from 'lucide/createElement.mjs';
+import CircleCheck from 'lucide/icons/circle-check.mjs';
+import LoaderCircle from 'lucide/icons/loader-circle.mjs';
 import Box from 'lucide/icons/box.mjs';
 import Copy from 'lucide/icons/copy.mjs';
 import Download from 'lucide/icons/download.mjs';
@@ -24,6 +26,8 @@ import Upload from 'lucide/icons/upload.mjs';
 import WandSparkles from 'lucide/icons/wand-sparkles.mjs';
 
 const ICONS = {
+  'circle-check': CircleCheck,
+  'loader-circle': LoaderCircle,
   'box': Box,
   'copy': Copy,
   'download': Download,
@@ -47,6 +51,11 @@ const ICONS = {
   'wand-sparkles': WandSparkles,
 };
 
+/** A decorative (aria-hidden) 16px icon element. */
+export function icon(name) {
+  return createElement(ICONS[name], { class: `icon icon-${name}`, width: 16, height: 16, 'aria-hidden': 'true', focusable: 'false' });
+}
+
 /** Put the icon in front of every button[data-icon] under `root` (once per button). */
 export function decorate(root = document) {
   for (const b of root.querySelectorAll('button[data-icon]')) {
@@ -56,8 +65,7 @@ export function decorate(root = document) {
     const label = document.createElement('span');
     label.className = 'label';
     label.textContent = b.textContent.trim();
-    const svg = createElement(node, { class: 'icon', width: 16, height: 16, 'aria-hidden': 'true', focusable: 'false' });
-    b.replaceChildren(svg, label);
+    b.replaceChildren(icon(b.dataset.icon), label);
   }
 }
 
