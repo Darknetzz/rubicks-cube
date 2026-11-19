@@ -5,6 +5,8 @@ import { invertMoves } from '../../js/notation.js';
 import { planStage, defaultCrossColour } from './beginner.js';
 import { SOLVED, applyMoves, isSolved, validate, solveDetailed, splitMoves, fromFaces, solvedLike, centreColours, schemeText } from './cube3.js';
 
+const isRotation = (m) => /^[xyz]/.test(m);
+
 // States saved before colour letters were introduced used face letters in the Western scheme.
 const migrate = (state) => (typeof state === 'string' && /[UFDL]/.test(state) && /^[URFDLB]{54}$/.test(state) ? fromFaces(state) : state);
 
@@ -170,17 +172,25 @@ export class Session extends EventEmitter {
     const before = this.#position();
     let followed = !!this.plan;
     let state = this.state;
+    const done = []; // the moves as recorded: `list`, plus any rotation steps done by hand without being recorded
     for (const m of list) {
+      if (followed) {
+        const steps = this.#follow(state, m);
+        if (steps) {
+          done.push(...steps);
+          state = applyMoves(state, steps.join(' '));
+          continue;
+        }
+        followed = false;
+      }
+      done.push(m);
       state = applyMoves(state, m);
-      if (!this.plan) continue;
-      if (this.step < this.plan.length && state === applyMoves(this.planBase, this.plan.slice(0, this.step + 1))) this.step++;
-      else if (!this.#halfwayThroughStep(state)) followed = false;
     }
     if (!followed) Object.assign(this, { plan: null, step: 0, planBase: null, labels: null });
     this.state = state;
-    this.#turnDraft(list); // the painting is of the same physical cube, so it turns too
-    this.#record(list, before);
-    this.#commit({ type: 'moves', moves: list, origin });
+    this.#turnDraft(done); // the painting is of the same physical cube, so it turns too
+    this.#record(done, before);
+    this.#commit({ type: 'moves', moves: done, origin });
     return followed;
   }
 
@@ -258,11 +268,33 @@ export class Session extends EventEmitter {
     this.draft = { ...this.draft, state: turn(this.draft.state), painted: turn(this.draft.painted) };
   }
 
+  // The moves `m` amounts to on the plan from `state`, advancing the step, or null when it leaves the plan. Whole-cube
+  // rotation steps are easy to do in the hand and forget to record, so a move that follows the plan once the pending
+  // rotations are done counts them as done too.
+  #follow(state, m) {
+    const rotations = [];
+    for (let k = this.step; ; k++) {
+      const next = applyMoves(state, m);
+      if (k < this.plan.length && next === applyMoves(this.planBase, this.plan.slice(0, k + 1))) {
+        this.step = k + 1;
+        return [...rotations, m];
+      }
+      if (this.#halfwayThroughStep(next, k)) {
+        this.step = k;
+        return [...rotations, m];
+      }
+      // only skip rotations from exactly on a step (not halfway through a half turn)
+      if (k >= this.plan.length || !isRotation(this.plan[k]) || state !== applyMoves(this.planBase, this.plan.slice(0, k))) return null;
+      rotations.push(this.plan[k]);
+      state = applyMoves(state, this.plan[k]);
+    }
+  }
+
   // One quarter of the current half-turn step done (e.g. R or R' when the step is R2).
-  #halfwayThroughStep(state) {
-    const m = this.plan[this.step];
+  #halfwayThroughStep(state, step = this.step) {
+    const m = this.plan[step];
     if (!m || !/2'?$/.test(m)) return false;
-    const at = applyMoves(this.planBase, this.plan.slice(0, this.step));
+    const at = applyMoves(this.planBase, this.plan.slice(0, step));
     const quarter = m.replace(/2'?$/, '');
     return state === applyMoves(at, quarter) || state === applyMoves(at, `${quarter}'`);
   }

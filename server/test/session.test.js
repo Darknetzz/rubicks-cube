@@ -135,3 +135,36 @@ test('goto from halfway through a half-turn step takes the quarter back first', 
   assert.deepEqual(s.goto(2), ["U'", 'U2', 'R2']);
   assert.equal(s.snapshot().solved, true);
 });
+
+test('a whole-cube rotation step done in the hand is counted when the next move follows the plan', () => {
+  const s = new Session(null);
+  s.setState(applyMoves(SOLVED, "U' F R"));
+  s.setPlan([{ move: "x'" }, { move: "U'" }, { move: 'F' }, { move: 'U2' }]);
+  const events = [];
+  s.on('change', (e) => events.push(e));
+  // after x' the plan's U' is what was F before, so the page sends the move as held: U'
+  assert.equal(s.apply("U'"), true);
+  assert.equal(s.step, 2);
+  assert.deepEqual(events.at(-1).moves, ["x'", "U'"]);
+  assert.deepEqual(s.undo(), ["x'", "U'"]);
+  assert.equal(s.step, 0);
+});
+
+test('skipping a rotation step does not excuse a move that is off the plan', () => {
+  const s = new Session(null);
+  s.setState(SOLVED);
+  s.setPlan([{ move: 'y' }, { move: 'R' }]);
+  assert.equal(s.apply('L'), false);
+  assert.equal(s.plan, null);
+  assert.deepEqual(s.history.at(-1).moves, ['L']);
+});
+
+test('a rotation step can be skipped before a half-turn step done in quarters', () => {
+  const s = new Session(null);
+  s.setState(SOLVED);
+  s.setPlan([{ move: 'z' }, { move: 'R2' }]);
+  assert.equal(s.apply('R'), true);
+  assert.equal(s.step, 1, 'halfway through R2');
+  assert.equal(s.apply('R'), true);
+  assert.equal(s.step, 2);
+});
