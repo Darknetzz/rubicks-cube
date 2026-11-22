@@ -3,7 +3,7 @@
 ## Repos
 
 - **GitLab is the source of truth:** `origin` = `git@gitlab.roste.org:claude/rubicks-cube.git`. Push here.
-- **GitHub** `Darknetzz/rubicks-cube` is a public mirror of GitLab. Do **not** add GitHub Actions; all CI runs on GitLab (`.gitlab-ci.yml`).
+- **GitHub** `Darknetzz/rubicks-cube` is a public copy. There is no automatic mirror: push `main` there yourself (`git push git@github.com:Darknetzz/rubicks-cube.git main`); `scripts/release.sh` does it on each release. Do **not** add GitHub Actions; all CI runs on GitLab (`.gitlab-ci.yml`).
 
 ## Test
 
