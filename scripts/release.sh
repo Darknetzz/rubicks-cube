@@ -50,7 +50,7 @@ git tag -a "$TAG" -m "$TAG"
 
 echo "== push to GitLab (CI: GitLab release + Docker Hub/GHCR images)"
 git push --quiet origin main "$TAG"
-echo "== push to GitHub (no automatic mirror)"
+echo "== push to GitHub too (the GitLab mirror may lag; gh release needs the tag now)"
 git push --quiet "$GITHUB_URL" main "$TAG"
 
 NOTES_FILE=$(mktemp); trap 'rm -f "$NOTES_FILE"' EXIT
