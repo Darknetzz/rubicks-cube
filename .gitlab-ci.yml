@@ -55,6 +55,8 @@ docker:
         --label org.opencontainers.image.version="$V" \
         --label org.opencontainers.image.revision="$CI_COMMIT_SHA" \
         --label org.opencontainers.image.source=https://github.com/Darknetzz/rubicks-cube \
+        --annotation "index:org.opencontainers.image.source=https://github.com/Darknetzz/rubicks-cube" \
+        --annotation "index:org.opencontainers.image.description=Rubik's cube in the browser, with an MCP server that solves your real cube" \
         $TAGS --push .
   retry:
     max: 1
