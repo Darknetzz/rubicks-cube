@@ -1,0 +1,76 @@
+# Version tags (vX.Y.Z): GitLab release from CHANGELOG.md, and a multi-arch Docker image
+# pushed to Docker Hub (darknetz/rubiks-cube) and GHCR (ghcr.io/darknetzz/rubiks-cube)
+# tagged X.Y.Z, X.Y, X and latest.
+#
+# CI/CD variables (Settings -> CI/CD -> Variables, masked + protected):
+#   DOCKERHUB_USERNAME, DOCKERHUB_TOKEN   Docker Hub access token (read/write)
+#   GHCR_USERNAME, GHCR_TOKEN             GitHub PAT with write:packages
+# Missing credentials for a registry skip that registry; with none set the job does not run.
+# The runner must allow privileged containers (docker:dind + binfmt for arm64).
+
+workflow:
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v[0-9]+\.[0-9]+\.[0-9]+$/
+    - if: $CI_COMMIT_BRANCH
+
+stages: [test, publish, release]
+
+test:
+  stage: test
+  image: node:26.13.1-alpine
+  script:
+    - (cd server && npm ci)
+    - node --test
+
+docker:
+  stage: publish
+  image: docker:27
+  services:
+    - name: docker:27-dind
+      alias: docker
+  variables:
+    DOCKER_TLS_CERTDIR: "/certs"
+    DOCKERHUB_IMAGE: darknetz/rubiks-cube
+    GHCR_IMAGE: ghcr.io/darknetzz/rubiks-cube
+  rules:
+    - if: $CI_COMMIT_TAG && ($DOCKERHUB_TOKEN || $GHCR_TOKEN)
+  script:
+    - until docker info >/dev/null 2>&1; do sleep 1; done
+    - |
+      set -eu
+      V="${CI_COMMIT_TAG#v}"; MINOR="${V%.*}"; MAJOR="${V%%.*}"
+      TAGS=""
+      if [ -n "${DOCKERHUB_TOKEN:-}" ]; then
+        echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
+        for t in "$V" "$MINOR" "$MAJOR" latest; do TAGS="$TAGS -t $DOCKERHUB_IMAGE:$t"; done
+      else echo "DOCKERHUB_TOKEN unset: skipping Docker Hub"; fi
+      if [ -n "${GHCR_TOKEN:-}" ]; then
+        echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
+        for t in "$V" "$MINOR" "$MAJOR" latest; do TAGS="$TAGS -t $GHCR_IMAGE:$t"; done
+      else echo "GHCR_TOKEN unset: skipping GHCR"; fi
+      [ -n "$TAGS" ] || { echo "No registry credentials set"; exit 1; }
+      docker run --privileged --rm tonistiigi/binfmt --install arm64
+      docker buildx create --use --name multi
+      docker buildx build --platform linux/amd64,linux/arm64 \
+        --label org.opencontainers.image.version="$V" \
+        --label org.opencontainers.image.revision="$CI_COMMIT_SHA" \
+        --label org.opencontainers.image.source=https://github.com/Darknetzz/rubicks-cube \
+        $TAGS --push .
+  retry:
+    max: 1
+    when: [runner_system_failure, stuck_or_timeout_failure]
+
+release:
+  stage: release
+  image: registry.gitlab.com/gitlab-org/cli:latest
+  needs: []
+  rules:
+    - if: $CI_COMMIT_TAG
+  script:
+    - awk -v t="$CI_COMMIT_TAG" '/^## \[/ { p = index($0, "## [" t "]") == 1; next } p' CHANGELOG.md > notes.md
+    - test -s notes.md || { echo "CHANGELOG.md has no '## [$CI_COMMIT_TAG]' section"; exit 1; }
+    - cat notes.md
+  release:
+    tag_name: $CI_COMMIT_TAG
+    name: $CI_COMMIT_TAG
+    description: ./notes.md
