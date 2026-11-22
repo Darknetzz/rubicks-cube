@@ -6,7 +6,7 @@
 # Usage: scripts/release.sh X.Y.Z [--dry-run]
 set -euo pipefail
 
-GITHUB_REPO=Darknetzz/rubicks-cube
+GITHUB_REPO=Darknetzz/rubiks-cube
 GITHUB_URL=git@github.com:$GITHUB_REPO.git
 
 die() { echo "release: $*" >&2; exit 1; }

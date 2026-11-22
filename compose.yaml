@@ -1,5 +1,5 @@
 # Fixed project name: the container and its data volume keep their names whatever folder this runs from.
-name: rubicks-cube
+name: rubiks-cube
 
 services:
   cube:

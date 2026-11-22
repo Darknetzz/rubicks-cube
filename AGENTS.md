@@ -2,8 +2,8 @@
 
 ## Repos
 
-- **GitLab is the source of truth:** `origin` = `git@gitlab.roste.org:claude/rubicks-cube.git`. Push here.
-- **GitHub** `Darknetzz/rubicks-cube` is a public copy, kept in sync by a GitLab push mirror (Settings -> Repository -> Mirroring repositories): protected branches (`main`) and all tags, on every push to GitLab. It uses a fine-grained GitHub token (Contents: read/write on this repo only); when the token expires the mirror fails and needs a new one. Push only to GitLab. Do **not** add GitHub Actions; all CI runs on GitLab (`.gitlab-ci.yml`).
+- **GitLab is the source of truth:** `origin` = `git@gitlab.roste.org:claude/rubiks-cube.git`. Push here.
+- **GitHub** `Darknetzz/rubiks-cube` is a public copy, kept in sync by a GitLab push mirror (Settings -> Repository -> Mirroring repositories): protected branches (`main`) and all tags, on every push to GitLab. It uses a fine-grained GitHub token (Contents: read/write on this repo only); when the token expires the mirror fails and needs a new one. Push only to GitLab. Do **not** add GitHub Actions; all CI runs on GitLab (`.gitlab-ci.yml`).
 
 ## Test
 
