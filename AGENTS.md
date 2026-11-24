@@ -3,7 +3,8 @@
 ## Repos
 
 - **GitLab is the source of truth:** `origin` = `git@gitlab.roste.org:claude/rubiks-cube.git`. Push here.
-- **GitHub** `Darknetzz/rubiks-cube` is a public copy, kept in sync by a GitLab push mirror (Settings -> Repository -> Mirroring repositories): protected branches (`main`) and all tags, on every push to GitLab. It uses a fine-grained GitHub token (Contents: read/write on this repo only); when the token expires the mirror fails and needs a new one. Push only to GitLab. Do **not** add GitHub Actions; all CI runs on GitLab (`.gitlab-ci.yml`).
+- `origin` is the only remote; the local folder is still named `rubicks-cube` (old name), the projects are `rubiks-cube`.
+- **GitHub** `Darknetzz/rubiks-cube` is a public read-only copy, kept in sync by a GitLab push mirror (Settings -> Repository -> Mirroring repositories, mirror id 8): protected branches (`main`) and all tags, on every push to GitLab. Never push to GitHub or add it as a remote. It uses a fine-grained GitHub token (Contents: read/write on this repo only); when the token expires the mirror fails and needs a new one. Push only to GitLab. Do **not** add GitHub Actions; all CI runs on GitLab (`.gitlab-ci.yml`).
 
 ## Test
 
@@ -18,7 +19,7 @@ Versions are `vX.Y.Z` tags; the version also lives in `package.json`, and `CHANG
 1. Add the new section at the top of `CHANGELOG.md` (leave it uncommitted).
 2. Run `scripts/release.sh X.Y.Z --dry-run` to check, then `scripts/release.sh X.Y.Z`.
 
-The script checks that you are on a clean, up-to-date `main`, that the version is newer than the last tag and that the changelog section exists, and that the tests pass. It then bumps `package.json`, commits "Release vX.Y.Z", tags, pushes `main` and the tag to GitLab and also straight to GitHub (so the tag is there before the mirror catches up), and creates the GitHub release with `gh`.
+The script checks that you are on a clean, up-to-date `main`, that the version is newer than the last tag and that the changelog section exists, and that the tests pass. It then bumps `package.json`, commits "Release vX.Y.Z", tags, pushes `main` and the tag to GitLab, waits (up to 10 min) for the mirror to copy the tag to GitHub, and creates the GitHub release with `gh`.
 
 The tag pipeline on GitLab then:
 - creates the GitLab release from the changelog section (`release` job);
