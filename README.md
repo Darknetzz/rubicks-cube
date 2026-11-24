@@ -39,7 +39,145 @@ Development tools (not installed by the project):
 
 Static only: copy the files to any static host. `.htaccess` (Apache) returns 404 for dotfiles (`.git`, `.env`), `server/`, `data/` and the build/package files, so a checkout can be served directly.
 
-With real-cube mode: run the Docker container (see below) from a checkout outside the web root, and put HTTPS in front of it.
+With real-cube mode, either run the Docker container (see [Real-cube mode + MCP server](#real-cube-mode--mcp-server)) from a checkout outside the web root and put HTTPS in front of it, or serve the checkout with Apache or nginx as below.
+
+## Deploy on Apache or nginx
+
+There is no build step, so the web server can serve a git checkout as it is (for example `/var/www/html/rubiks`, served at `https://example.com/rubiks/`). Updating is then just `git pull`.
+
+```sh
+cd /var/www/html
+git clone https://github.com/Darknetzz/rubiks-cube.git rubiks
+```
+
+That is all the plain cube needs. Real-cube mode and the MCP endpoint also need the Node server, which the web server reaches through a reverse proxy. The page calls `api/…` relative to its own address, so it works in a subfolder without any settings: proxy `<folder>/api/` and `<folder>/mcp` to the Node server and let Apache or nginx serve the rest.
+
+### 1. Run the Node server
+
+Needs Node.js 20.6 or newer (for `--env-file`); the Docker image uses Node 26.
+
+```sh
+cd /var/www/html/rubiks/server && npm ci --omit=dev && cd ..
+echo "MCP_TOKEN=$(openssl rand -hex 32)" > .env
+mkdir -p data
+PORT=3000 node --env-file=.env server/src/index.js   # try it: curl http://127.0.0.1:3000/healthz
+```
+
+Settings, in `.env` or the environment:
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `PORT` | `3000` | Port the server listens on (all interfaces; firewall it or proxy only) |
+| `MCP_TOKEN` | none | Bearer token for `/mcp`; without it every MCP request is refused |
+| `DATA_FILE` | `data/state.json` in the checkout | The default cube; other cubes go in `cubes/` next to it |
+| `SOLVE_BUDGET_MS` | `2000` | Time budget for a whole solve |
+| `SHORT_SEARCH_MS` | `300` | Time budget for the optimal search within it |
+
+The user that runs the server must be able to write `data/` (or the folder of `DATA_FILE`). `.htaccess` hides `.env`, `data/` and `server/` from the web on Apache; the nginx config below does the same.
+
+To keep it running, a systemd unit such as `/etc/systemd/system/rubiks-cube.service`:
+
+```ini
+[Unit]
+Description=Rubik's Cube real-cube / MCP server
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/var/www/html/rubiks
+Environment=NODE_ENV=production PORT=3000
+ExecStart=/usr/bin/node --env-file=.env server/src/index.js
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```sh
+sudo chown -R www-data: /var/www/html/rubiks/data
+sudo systemctl daemon-reload
+sudo systemctl enable --now rubiks-cube
+```
+
+Change `User=` and the `node` path to fit (with nvm, `ExecStart=/bin/bash -lc 'source ~/.nvm/nvm.sh && exec node --env-file=.env server/src/index.js'`). The server reads its solver tables at start, which takes a moment.
+
+Instead of the systemd unit you can run the Docker container and proxy to its port (`8095` by default). `compose.yaml` publishes that port on all interfaces, so firewall it or change the mapping to `127.0.0.1:${CUBE_PORT:-8095}:3000`.
+
+### 2a. Apache
+
+`.htaccess` needs `AllowOverride FileInfo` (or `All`) for the folder; otherwise put its `RedirectMatch` line in the vhost. Enable the proxy modules and add to the site's vhost (for HTTPS, the `:443` one):
+
+```sh
+sudo a2enmod proxy proxy_http
+```
+
+```apache
+# Rubik's Cube: real-cube API (with its live SSE stream) and the MCP endpoint
+<Location /rubiks/api/>
+    ProxyPass http://127.0.0.1:3000/api/ flushpackets=on
+    ProxyPassReverse http://127.0.0.1:3000/api/
+</Location>
+<Location /rubiks/mcp>
+    ProxyPass http://127.0.0.1:3000/mcp flushpackets=on
+    ProxyPassReverse http://127.0.0.1:3000/mcp
+</Location>
+```
+
+```sh
+sudo apachectl configtest && sudo systemctl reload apache2
+```
+
+`flushpackets=on` sends the live view's server-sent events straight through instead of buffering them. The server pings the stream every 25 s, well inside Apache's default 60 s proxy timeout.
+
+### 2b. nginx
+
+nginx ignores `.htaccess`, so the config has to hide the same files:
+
+```nginx
+# inside the server { } block
+location /rubiks/ {
+    alias /var/www/html/rubiks/;
+    index index.html;
+
+    # same as .htaccess: only the static app is public
+    location ~ ^/rubiks/(\.[^/]*|server|data|node_modules|tests|Dockerfile|compose\.yaml|package(-lock)?\.json|README\.md)(/|$) {
+        return 404;
+    }
+}
+
+# real-cube API (with its live SSE stream) and the MCP endpoint
+location /rubiks/api/ {
+    proxy_pass http://127.0.0.1:3000/api/;
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+    proxy_buffering off;
+    proxy_read_timeout 1h;
+}
+location = /rubiks/mcp {
+    proxy_pass http://127.0.0.1:3000/mcp;
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+    proxy_buffering off;
+    proxy_read_timeout 1h;
+}
+```
+
+```sh
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+When the checkout is the site's root instead of a subfolder, use `root /var/www/html/rubiks;` in place of the `alias` block and drop the `/rubiks` prefix everywhere.
+
+### 3. Check it
+
+- `https://example.com/rubiks/` shows the cube, and the real-cube button appears (the page shows it only when `api/state` answers).
+- `curl https://example.com/rubiks/api/state` returns JSON.
+- `curl https://example.com/rubiks/.env` and `…/server/src/index.js` return 404.
+- The MCP URL for Claude is `https://example.com/rubiks/mcp`, with the header `Authorization: Bearer <MCP_TOKEN>`.
+
+Serve it over HTTPS: the MCP token travels in a header.
 
 ## Run
 
@@ -94,7 +232,7 @@ echo "MCP_TOKEN=$(openssl rand -hex 32)" > .env
 docker compose up -d --build        # http://localhost:8095 (CUBE_PORT to change)
 ```
 
-Real-cube mode is only offered when the page is served by this server.
+Real-cube mode is only offered when the page is served by this server, or by a web server that proxies `api/` to it (see [Deploy on Apache or nginx](#deploy-on-apache-or-nginx)).
 
 ## Test
 
