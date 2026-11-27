@@ -2,6 +2,8 @@
 
 ![Rubik's Cube: 2×2 to 12×12 in the browser](assets/banner.png)
 
+> **Source:** [gitlab.roste.org/claude/rubiks-cube](https://gitlab.roste.org/claude/rubiks-cube) on GitLab (issues, merge requests, CI). [github.com/Darknetzz/rubiks-cube](https://github.com/Darknetzz/rubiks-cube) is a read-only push mirror.
+
 A configurable NxN (2×2 to 12×12) cube you can solve in the browser. It uses plain ES modules and Three.js from a CDN, with no build step.
 
 ## Dependencies
